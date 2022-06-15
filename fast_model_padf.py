@@ -236,7 +236,7 @@ class ModelPadfCalculator:
         print(f'<fast_model_padf.clean_extended_atoms> Trimming atom sets to rmax')
         clean_ex = []
         cluster_subject = []
-        if self.com_cluster_flag:
+        if not self.com_cluster_flag:
             for ex_atom in self.raw_extended_atoms:
                 for as_atom in self.subject_atoms:
                     diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], as_atom[0], as_atom[1], as_atom[2])
@@ -245,23 +245,23 @@ class ModelPadfCalculator:
                         break
                     else:
                         continue
-        # elif self.com_cluster_flag:
-        #     x_com = np.mean(self.subject_atoms[:, 0])
-        #     y_com = np.mean(self.subject_atoms[:, 1])
-        #     z_com = np.mean(self.subject_atoms[:, 2])
-        #     print(f'center of mass at {[x_com, y_com, z_com]}')
-        #     for ex_atom in self.raw_extended_atoms:
-        #         diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], x_com, y_com, z_com)
-        #         if abs(diff) <= 2 * self.rmax:
-        #             clean_ex.append(ex_atom)
-        #         else:
-        #             continue
-            # for s_atom in self.subject_atoms:
-            #     diff = u.fast_vec_difmag(s_atom[0], s_atom[1], s_atom[2], x_com, y_com, z_com)
-            #     if abs(diff) <= self.rmax:
-            #         cluster_subject.append(s_atom)
-            #     else:
-            #         continue
+        elif self.com_cluster_flag:
+            x_com = np.mean(self.subject_atoms[:, 0])
+            y_com = np.mean(self.subject_atoms[:, 1])
+            z_com = np.mean(self.subject_atoms[:, 2])
+            print(f'center of mass at {[x_com, y_com, z_com]}')
+            for ex_atom in self.raw_extended_atoms:
+                diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], x_com, y_com, z_com)
+                if abs(diff) <= 2 * self.rmax:
+                    clean_ex.append(ex_atom)
+                else:
+                    continue
+            for s_atom in self.subject_atoms:
+                diff = u.fast_vec_difmag(s_atom[0], s_atom[1], s_atom[2], x_com, y_com, z_com)
+                if abs(diff) <= self.rmax:
+                    cluster_subject.append(s_atom)
+                else:
+                    continue
         clean_ex = np.array(clean_ex)
         print(
             f"<clean_extended_atoms>: Extended atom set has been reduced to {len(clean_ex)} atoms within {self.rmax} radius")
