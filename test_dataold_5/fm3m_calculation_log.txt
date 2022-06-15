@@ -1,0 +1,3 @@
+Calculation time: 421.26047348976135 s
+Total number of interatomic vectors 702
+Total number of atoms in system 179

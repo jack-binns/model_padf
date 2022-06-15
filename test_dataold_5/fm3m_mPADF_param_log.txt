@@ -1,0 +1,35 @@
+# log of input parameters for model PADF calculation
+["model PADF"]
+root = C:\python\model_padf\
+project = test_data\
+tag = fm3m
+supercell_atoms = fm3m_sc.xyz
+subject_atoms = fm3m.xyz
+rmin = 0.0
+rmax = 5
+nr = 128
+r_dist_bin = 0.0390625
+nth = 180
+angular_bin = 1.0
+r_power = 2
+convergence_check_flag = True
+r12_reflection = True
+mode = stm
+dimension = 3
+processor_num = 1
+Pool = <multiprocessing.pool.Pool state=RUN pool_size=2>
+loops = 0
+verbosity = 0
+Theta = []
+rolling_Theta = []
+n2_contacts = []
+interatomic_vectors = []
+subject_set = []
+subject_number = 1
+raw_extended_atoms = []
+extended_atoms = []
+loop_similarity_array = []
+convergence_target = 1e-08
+converged_loop = 0
+total_contribs = 0
+calculation_time = 0.0
