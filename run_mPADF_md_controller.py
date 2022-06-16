@@ -1,3 +1,17 @@
+"""
+
+Runner script for automating model PADF calculations
+
+controller module generates frames and passes variables from here into
+the fast_model_padf module.
+
+TO DO:
+ - parallelise
+ - total calculation timings
+ - total calculation contact tracking
+
+"""
+
 import controller
 
 if __name__ == '__main__':

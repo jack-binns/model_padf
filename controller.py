@@ -4,7 +4,6 @@ Model PADF MD controller
 @author: andrewmartin, jack-binns
 """
 import fast_model_padf as fmp
-import glob
 
 
 class MPADFController:

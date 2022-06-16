@@ -164,24 +164,20 @@ def calc_rfactor(array_a, array_b):
     # print(f'R_p : {r_p}')
     return r_p
 
-"""
 
-FINISH THIS
-
-"""
-# def output_cluster_xyz(atom_list)
-#     print(f"{self.output_file=}")
-#     with open(self.output_file, 'w') as foo:
-#         foo.write(f'{len(self.supercell_atom_id_list)}\n')
-#         foo.write(
-#             f'sc {self.super_a_min} {self.super_a_max} {self.super_b_min} {self.super_b_max} {self.super_c_min} {self.super_c_max}\n')
-#         for k, atom in enumerate(self.supercell_atom_cart_list):
-#             atom_out = f'{self.supercell_atom_id_list[k]} '
-#             for frag in atom:
-#                 atom_out += f'{frag:11.6f} '
-#             atom_out += '\n'
-#             foo.write(atom_out)
-
+def output_reference_xyz(atom_list, path):
+    print(f"<utils.output_reference_xyz> Writing to {path}")
+    with open(path, 'w') as foo:
+        foo.write(f'{len(atom_list)}\n')
+        foo.write(f'{path}\n')
+        for k, atom in enumerate(atom_list):
+            # print(atom)
+            atom_id = get_id(z=atom[3])
+            atom_out = f'{atom_id} '
+            for frag in atom[:3]:
+                atom_out += f'{frag:11.6f} '
+            atom_out += '\n'
+            foo.write(atom_out)
 
 
 def get_z(atom_name):
@@ -190,3 +186,11 @@ def get_z(atom_name):
         if atoms.ELEMENTS[element].symbol == atom_name:
             # print(f'FOUND {atoms.ELEMENTS[element].symbol}')
             return atoms.ELEMENTS[element].atomic_number
+
+
+def get_id(z):
+    # print(f'atom_name {atom_name}')
+    for element in atoms.ELEMENTS:
+        if atoms.ELEMENTS[element].atomic_number == z:
+            # print(f'FOUND {atoms.ELEMENTS[element].symbol}')
+            return atoms.ELEMENTS[element].symbol

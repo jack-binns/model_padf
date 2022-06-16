@@ -122,28 +122,6 @@ class ModelPadfCalculator:
                 f.write(d + " = " + str(e) + "\n")
             f.close()
 
-    def clean_project_folder(self):
-        """
-        Cleans up the Theta and Theta_loop files that are generated through the calculation
-        :return:
-        """
-        print("<clean_project_folder>: Cleaning work folder...")
-        if self.verbosity == 0:
-            os.remove(self.root + self.project + self.tag + '_Theta_0.npy')
-        else:
-            if self.converged_loop > 0:
-                for i in range(1, int(self.converged_loop) + 1):
-                    os.remove(self.root + self.project + self.tag + '_Theta_loop_' + str(i) + '.npy')
-
-                for j in range(int(self.processor_num)):
-                    os.remove(self.root + self.project + self.tag + '_Theta_' + str(j) + '.npy')
-            else:
-                for i in range(1, int(self.loops) + 2):
-                    os.remove(self.root + self.project + self.tag + '_Theta_loop_' + str(i) + '.npy')
-
-                for j in range(int(self.processor_num)):
-                    os.remove(self.root + self.project + self.tag + '_Theta_' + str(j) + '.npy')
-
     def write_calculation_summary(self):
         """
         Writes out a summary of the calculation
@@ -155,10 +133,6 @@ class ModelPadfCalculator:
             f.write(f'Total number of atoms in system {len(self.extended_atoms)}\n')
             f.write(f'Total number of contributing contacts {self.total_contribs}\n')
         np.savetxt(self.root + self.project + f'{self.tag}_similarity_log.txt', np.array(self.loop_similarity_array))
-
-    # def output_cluster_xyz(self):
-    #
-
 
     def subject_target_setup(self):
         """
@@ -177,6 +151,9 @@ class ModelPadfCalculator:
         self.extended_atoms = self.clean_extended_atoms()  # Trim to the atoms probed by the subject set
         # if self.com_cluster_flag:
         #     self.output_cluster_xyz()       ## WRITE OUT THE CLUSTER GEOMETRIES
+        u.output_reference_xyz(self.subject_atoms, path=f'{self.root}{self.project}{self.tag}_clean_subject_atoms.xyz')
+        u.output_reference_xyz(self.extended_atoms,
+                               path=f'{self.root}{self.project}{self.tag}_clean_extended_atoms.xyz')
         return self.subject_atoms, self.extended_atoms
 
     def cycle_assessment(self, k, start_time):
@@ -207,7 +184,6 @@ class ModelPadfCalculator:
             print(f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining / 3600, 3)} hr remaining")
         else:
             print(f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining, 3)} s remaining")
-
 
     def generate_empty_theta(self, shape):
         """
@@ -267,7 +243,6 @@ class ModelPadfCalculator:
             f"<clean_extended_atoms>: Extended atom set has been reduced to {len(clean_ex)} atoms within {self.rmax} radius")
         return np.array(clean_ex)
 
-
     def clean_subject_atoms(self):
         """
         Trims the length of the extended atoms to the set probed by
@@ -290,7 +265,6 @@ class ModelPadfCalculator:
         print(
             f"<clean_subject_atoms>: Subject atom set has been reduced to {len(cluster_subject)} atoms within {self.com_radius} radius")
         return np.array(cluster_subject)
-
 
     def bin_cor_vec_to_theta(self, cor_vec, fz, array):
         """
@@ -317,7 +291,6 @@ class ModelPadfCalculator:
             array[r1_index, r2_index, th_index] = array[r1_index, r2_index, th_index] + fz
             if self.r12_reflection:
                 array[r2_index, r1_index, th_index] = array[r2_index, r1_index, th_index] + fz
-
 
     def calc_padf_frm_iav(self, k, r_ij):
         start = time.time()
@@ -346,7 +319,7 @@ class ModelPadfCalculator:
         print(f'<pair_dist_calculation> Calculating pairwise interatomic distances...')
         # interatomic_vectors
         for k, a_i in enumerate(self.subject_atoms):
-            if k % int(len(self.subject_atoms)*0.05) == 0:
+            if k % int(len(self.subject_atoms) * 0.05) == 0:
                 print(f"{k} / {len(self.subject_atoms)}")
             for a_j in self.extended_atoms:
                 if not np.array_equal(a_i, a_j):
@@ -403,95 +376,6 @@ class ModelPadfCalculator:
         self.interatomic_vectors = c
         np.save(self.root + self.project + self.tag + '_interatomic_vectors_trim.npy', self.interatomic_vectors)
 
-    # def run(self):
-    #     """
-    #     Runs the Straight-To-Matrix model PADF calculation
-    #     :return:
-    #     """
-    #     start = time.time()
-    #     self.parameter_check()
-    #     self.write_all_params_to_file()
-    #     self.subject_atoms, self.extended_atoms = self.subject_target_setup()
-    #     self.dimension = self.get_dimension()
-    #     """
-    #     Here we do the chunking for sending to threads
-    #     """
-    #     self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
-    #     self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
-    #
-    #     np.random.shuffle(self.interatomic_vectors)  # Shuffle the list of interatomic vectors
-    #     # print(f'DEBUG {len(self.interatomic_vectors)}')
-    #     self.loops = int(
-    #         len(self.interatomic_vectors) / self.processor_num)  # The number of loops for complete calculation
-    #     # chunked add_bodies_to_theta:
-    #     for loop_id in np.arange(1, int(self.loops) + 2, 1):
-    #         print(str(loop_id) + " / " + str(int(self.loops) + 1))
-    #         cluster_vectors = self.interatomic_vectors[
-    #                           (
-    #                                   loop_id - 1) * self.processor_num:loop_id * self.processor_num]  # Create a chunk of to send out
-    #         # [print(f'DEBUG: cluster vec {x} : {vec}') for x, vec in enumerate(cluster_vectors)]
-    #         if self.mode == 'rrprime':
-    #             processes = [mp.Process(target=self.calc_padf_frm_iav, args=(i, cl_vec)) for i, cl_vec in
-    #                          enumerate(cluster_vectors)]
-    #         elif self.mode == 'stm':
-    #             processes = [mp.Process(target=self.calc_padf_frm_iav, args=(i, cl_vec)) for i, cl_vec in
-    #                          enumerate(cluster_vectors)]
-    #         else:
-    #             print("ERROR: Missing mode")
-    #             break
-    #         for p in processes:
-    #             p.start()
-    #         for p in processes:
-    #             p.join()
-    #         # Crunch the npy arrays together for this loop
-    #         self.parallel_pool_accounting(loop_id)
-    #
-    #         # Check for convergence if required
-    #         if self.convergence_check_flag:
-    #             # print(f"{self.convergence_check_flag} {loop_id=}")
-    #             loop_convergence = self.convergence_check(loop_id)
-    #             if loop_id > 2:
-    #                 # print(f"{self.convergence_check_flag} {loop_id=}")
-    #                 # print(f'loop array {self.loop_similarity_array} {loop_id}')
-    #                 print(
-    #                     f'similarity change :: {loop_convergence - self.loop_similarity_array[loop_id - 2][1]}  target :: {self.convergence_target}')
-    #                 if abs(loop_convergence - self.loop_similarity_array[loop_id - 2][1]) < self.convergence_target:
-    #                     # print(f'DEBUG loop convergence {loop_convergence}  prev  {self.loop_similarity_array[loop_id-2][1]}')
-    #                     print("<run> Calculation converged at loop ", loop_id)
-    #                     self.converged_loop = loop_id
-    #                     break
-    #                 if loop_id == int(self.loops) + 2:
-    #                     self.converged_loop = loop_id
-    #                     break
-    #                 else:
-    #                     continue
-    #             else:
-    #                 continue
-    #
-    #     # Crunch the npy arrays together for all loops:
-    #     if self.convergence_check_flag:
-    #         if self.converged_loop == 0:
-    #             BigTheta = self.rolling_Theta
-    #         else:
-    #             print(f"<run> converged_loop: {self.converged_loop}")
-    #
-    #             BigTheta = self.rolling_Theta
-    #             print(f'<run> Theta shape: {BigTheta.shape}')
-    #     else:
-    #         BigTheta = self.rolling_Theta
-    #     end = time.time()
-    #     # Check to see if the folder should be cleaned
-    #     if self.verbosity == 0:
-    #         self.clean_project_folder()
-    #     np.save(self.root + self.project + self.tag + '_mPADF_total_sum', BigTheta)
-    #     self.calculation_time = end - start
-    #     print(f"<run> Total run time = {end - start} seconds")
-    #     print(f"<run> Total contributing contacts (for normalization) = {self.total_contribs}")
-    #     if self.dimension == 2:
-    #         plt.imshow(BigTheta)
-    #         plt.show()
-    #     self.write_calculation_summary()
-
     def run_fast_serial_calculation(self):
         global_start = time.time()
         self.parameter_check()
@@ -529,15 +413,16 @@ class ModelPadfCalculator:
         np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
 
         self.calculation_time = time.time() - global_start
-        print(f"<fast_model_padf.run_fast_serial_calculation> run_fast_serial_calculation run time = {self.calculation_time} seconds")
-        print(f"<fast_model_padf.run_fast_serial_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
+        print(
+            f"<fast_model_padf.run_fast_serial_calculation> run_fast_serial_calculation run time = {self.calculation_time} seconds")
+        print(
+            f"<fast_model_padf.run_fast_serial_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
         self.write_calculation_summary()
         # Plot diagnostics
         self.loop_similarity_array = np.array(self.loop_similarity_array)
 
         # plt.plot(self.loop_similarity_array[:, 0], self.loop_similarity_array[:, 1], '-')
         # plt.show()
-
 
 # if __name__ == '__main__':
 #     modelp = ModelPadfCalculator()
