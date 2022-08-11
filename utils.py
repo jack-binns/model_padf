@@ -2,6 +2,15 @@ import numba
 import math as m
 import numpy as np
 import atomic_z as atoms
+import shutil
+from tqdm import tqdm
+from re import split as resplit
+
+
+def sorted_nicely(ls):
+    convert = lambda text: int(text) if text.isdigit() else text
+    alphanum_key = lambda key: [convert(c) for c in resplit('([0-9]+)', key)]
+    return sorted(ls, key=alphanum_key)
 
 
 @numba.njit()

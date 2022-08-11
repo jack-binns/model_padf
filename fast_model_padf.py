@@ -162,9 +162,10 @@ class ModelPadfCalculator:
             loop_cos = u.cossim_measure(self.rolling_Theta_odds, self.rolling_Theta_evens)
             # print(f"{loop_cos=}")
             self.loop_similarity_array.append([k, loop_cos])
-            print(
-                f"| {k} / {len(self.interatomic_vectors)} | Odd/even cosine similarity == {loop_cos}")
-            if k % 10 == 0:
+            if self.verbosity == 1:
+                print(
+                    f"| {k} / {len(self.interatomic_vectors)} | Odd/even cosine similarity == {loop_cos}")
+            if k % 100 == 0:
                 print(
                     f"| {k} / {len(self.interatomic_vectors)} | Odd/even cosine similarity == {loop_cos}")
                 # foo = np.array(self.loop_similarity_array)
@@ -180,10 +181,12 @@ class ModelPadfCalculator:
         time_remaining = np.mean(np.array(self.iteration_times[:k + 1])) * (len(self.iteration_times) - k)
         # print(cycle_time)
         # print(time_remaining)
-        if time_remaining > 3600:
-            print(f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining / 3600, 3)} hr remaining")
-        else:
-            print(f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining, 3)} s remaining")
+        if self.verbosity == 1:
+            if time_remaining > 3600:
+                print(
+                    f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining / 3600, 3)} hr remaining")
+            else:
+                print(f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining, 3)} s remaining")
 
     def generate_empty_theta(self, shape):
         """
@@ -400,6 +403,7 @@ class ModelPadfCalculator:
         self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
         self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
         # Here we loop over interatomic vectors
+        print(f'<fast_model_padf.run_fast_serial_calculation> Working...')
         for k, subject_iav in enumerate(self.interatomic_vectors):
             k_start = time.time()
             self.calc_padf_frm_iav(k=k, r_ij=subject_iav)
