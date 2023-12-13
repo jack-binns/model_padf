@@ -428,5 +428,8 @@ class ModelPadfCalculator:
         # plt.plot(self.loop_similarity_array[:, 0], self.loop_similarity_array[:, 1], '-')
         # plt.show()
 
+    # Here copy the previous function and modify to include matrix calculations
+
+
 # if __name__ == '__main__':
 #     modelp = ModelPadfCalculator()
