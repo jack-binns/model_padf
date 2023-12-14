@@ -318,11 +318,11 @@ class ModelPadfCalculator:
         # print(self.total_contribs, fb_hit_count)
         # np.save(self.root + self.project + self.tag + '_Theta_' + str(k), Theta)
 
-    def pair_dist_calculation(self):
+    def pair_dist_calculation(self,writefreq=1):
         print(f'<pair_dist_calculation> Calculating pairwise interatomic distances...')
         # interatomic_vectors
         for k, a_i in enumerate(self.subject_atoms):
-            if k % int(len(self.subject_atoms) * 0.05) == 0:
+            if k % int(len(self.subject_atoms) * writefreq) == 0:
                 print(f"{k} / {len(self.subject_atoms)}")
             for a_j in self.extended_atoms:
                 if not np.array_equal(a_i, a_j):
@@ -421,6 +421,137 @@ class ModelPadfCalculator:
             f"<fast_model_padf.run_fast_serial_calculation> run_fast_serial_calculation run time = {self.calculation_time} seconds")
         print(
             f"<fast_model_padf.run_fast_serial_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
+        self.write_calculation_summary()
+        # Plot diagnostics
+        self.loop_similarity_array = np.array(self.loop_similarity_array)
+
+        # plt.plot(self.loop_similarity_array[:, 0], self.loop_similarity_array[:, 1], '-')
+        # plt.show()
+
+
+    #
+    #  The core of the matrix correlation and histogramming routine
+    #
+# calculate vec dot vec_prime for every pair of vectors
+  
+
+    def calc_padf_frm_iav_matrix(self,vectors,vectors2,nr=100,nth=100):
+          corr = vectors@vectors2.T
+      
+          # get the norm of all vectors and make them into a norm*norm_prime matrix
+          norms   = np.sqrt(np.sum(vectors**2,1))
+          norms2  = np.sqrt(np.sum(vectors2**2,1))
+          #print("min max norms",np.min(norms), np.max(norms),np.min(norms2),np.max(norms2), np.min(corr),np.max(corr)) 
+          norms_c = np.outer(norms,norms2.T)
+          #print("min max norms_c", np.min(norms_c), np.max(norms_c))
+      
+          # the cosine(theta) for each pair of vectors
+          div = corr/norms_c
+          div[div>1] = 1
+          div[div<-1] = -1
+ 
+          #print("min max div", np.min(div), np.max(div))
+          # the angle between each pair of vectors
+          angles = np.arccos(div)
+          #print("min max angles", np.min(angles), np.max(angles))
+      
+          # the final step would be to use array masking to histogram the calculation...
+          nvec  = len(vectors)
+          nvec2 = len(vectors2)
+          rrth_coords = np.array([np.outer(norms,np.ones(nvec2).T).flatten(),
+                      np.outer(np.ones(nvec),norms2).flatten(),
+                      angles.flatten() ])
+          #print(nr, nth, np.min(rrth_coords), np.max(rrth_coords))
+          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(0,np.pi)))
+          #print(edges[0], )
+          return padf, edges
+
+
+    #
+    # A matrix implementation of the model calculation   
+    #
+    #
+    def run_fast_matrix_calculation(self):
+        global_start = time.time()
+        self.parameter_check()
+        self.write_all_params_to_file()
+        self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+        self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
+        """
+        Here we do the chunking for sending to threads
+        """
+        self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
+        self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
+        self.percent_milestones = np.linspace(start=0, stop=len(self.interatomic_vectors), num=10)
+        self.iteration_times = np.zeros(len(self.interatomic_vectors))
+        # print(self.iteration_times.shape)
+        [int(j) for j in self.percent_milestones]
+        # print(f'{self.percent_milestones=}')
+        np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
+        print(
+            f'<fast_model_padf.run_fast_serial_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
+        # Set up the rolling PADF arrays
+        self.rolling_Theta = np.zeros((self.nr, self.nr, self.nth))
+        self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
+        self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
+        # Here we loop over interatomic vectors
+        chunksize = 500
+        nchunks = len(self.interatomic_vectors)//chunksize
+        print(f'<fast_model_padf.run_fast_matrix_calculation> Working...')
+        global_start = time.time()
+        for k in range(nchunks):
+            print(f'Correlating chunk index {k+1}/{nchunks}')
+            vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
+            for k2 in range(nchunks):
+                #print(f'Correlating chunk index {k+1}/{nchunks}  {k2}/{nchunks}')
+                vectors2 = self.interatomic_vectors[k2*chunksize:(k2+1)*chunksize,:3]
+                padftmp, edges = self.calc_padf_frm_iav_matrix(vectors,vectors2,nr=self.nr,nth=self.nth)
+                if (k*chunksize+k2)%2==0:
+                    self.rolling_Theta_evens += padftmp
+                else:
+                    self.rolling_Theta_odds += padftmp
+                self.rolling_Theta += padftmp
+        """
+        if len(self.interatomic_vectors)%chunksize!=0: 
+            vectors  = self.interatomic_vectors[nchunks*chunksize:,:3]
+            for k2 in range(nchunks):
+                #print(f'Correlating chunk index {k+1}/{nchunks}  {k2}/{nchunks}')
+                vectors2 = self.interatomic_vectors[k2*chunksize:(k2+1)*chunksize,:3]
+                padftmp, edges = self.calc_padf_frm_iav_matrix(vectors,vectors2,nr=self.nr,nth=self.nth)
+                if (nchunks*chunksize+k2)%2==0:
+                    self.rolling_Theta_evens += padftmp
+                else:
+                    self.rolling_Theta_odds += padftmp
+                self.rolling_Theta += padftmp
+            #last one         
+            padftmp, edges = self.calc_padf_frm_iav_matrix(vectors,vectors,nr=self.nr,nth=self.nth)
+            if (nchunks*chunksize+nchunks)%2==0:
+                self.rolling_Theta_evens += padftmp
+            else:
+                self.rolling_Theta_odds += padftmp
+            self.rolling_Theta += padftmp
+        """
+        
+        self.total_contribs = len(self.interatomic_vectors)**2
+        self.calculation_time = time.time() - global_start
+
+        #for k, subject_iav in enumerate(self.interatomic_vectors):
+        #    k_start = time.time()
+        #    self.calc_padf_frm_iav(k=k, r_ij=subject_iav)
+        #    self.cycle_assessment(k=k, start_time=k_start)
+        #    if self.converged_flag:
+        #        break
+
+        # Save the rolling PADF arrays
+        np.save(self.root + self.project + self.tag + '_mPADF_total_sum', self.rolling_Theta)
+        np.save(self.root + self.project + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
+        np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
+
+        self.calculation_time = time.time() - global_start
+        print(
+            f"<fast_model_padf.run_fast_model_calculation> run_fast_model_calculation run time = {self.calculation_time} seconds")
+        print(
+            f"<fast_model_padf.run_fast_model_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
         self.write_calculation_summary()
         # Plot diagnostics
         self.loop_similarity_array = np.array(self.loop_similarity_array)
