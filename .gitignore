@@ -1,0 +1,7 @@
+#pycache and cython files
+__pycache__/
+*.pyc
+
+
+.DS_Store
+
