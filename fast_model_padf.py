@@ -452,7 +452,7 @@ class ModelPadfCalculator:
  
           #print("min max div", np.min(div), np.max(div))
           # the angle between each pair of vectors
-          angles = np.arccos(div)
+          angles = div #np.arccos(div)
           #print("min max angles", np.min(angles), np.max(angles))
       
           # the final step would be to use array masking to histogram the calculation...
@@ -462,7 +462,8 @@ class ModelPadfCalculator:
                       np.outer(np.ones(nvec),norms2).flatten(),
                       angles.flatten() ])
           #print(nr, nth, np.min(rrth_coords), np.max(rrth_coords))
-          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(0,np.pi)))
+          #padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(0,np.pi)))
+          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(-1,1)))
           #print(edges[0], )
           return padf, edges
 
