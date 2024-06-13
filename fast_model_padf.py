@@ -36,6 +36,7 @@ class ModelPadfCalculator:
         self.mode = 'stm'
         self.dimension = 3
         self.processor_num = 2
+        self.chunksize = 50
         self.Pool = mp.Pool(self.processor_num)
         self.loops = 0
         self.verbosity = 0
@@ -269,6 +270,16 @@ class ModelPadfCalculator:
             f"<clean_subject_atoms>: Subject atom set has been reduced to {len(cluster_subject)} atoms within {self.com_radius} radius")
         return np.array(cluster_subject)
 
+    def select_subcell(self,atomlist,limits):
+        selected = []
+        xmin, xmax = limits[0],limits[1]
+        ymin, ymax = limits[2],limits[3]
+        zmin, zmax = limits[4],limits[5]
+        for v in atomlist:
+             if (v[0]>xmin)and(v[0]<xmax)and(v[1]>ymin)and(v[1]<ymax)and(v[2]>zmin)and(v[2]<zmax):
+                selected.append(v)
+        return np.array(selected)
+
     def bin_cor_vec_to_theta(self, cor_vec, fz, array):
         """
         Bin and then add the correlation vector to the
@@ -452,7 +463,7 @@ class ModelPadfCalculator:
  
           #print("min max div", np.min(div), np.max(div))
           # the angle between each pair of vectors
-          angles = np.arccos(div)
+          angles = div #np.arccos(div)
           #print("min max angles", np.min(angles), np.max(angles))
       
           # the final step would be to use array masking to histogram the calculation...
@@ -462,7 +473,7 @@ class ModelPadfCalculator:
                       np.outer(np.ones(nvec),norms2).flatten(),
                       angles.flatten() ])
           #print(nr, nth, np.min(rrth_coords), np.max(rrth_coords))
-          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(0,np.pi)))
+          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(-1,1))) #(0,np.pi)))
           #print(edges[0], )
           return padf, edges
 
@@ -471,16 +482,17 @@ class ModelPadfCalculator:
     # A matrix implementation of the model calculation   
     #
     #
-    def run_fast_matrix_calculation(self):
+    def run_fast_matrix_calculation(self,alreadysetup=False):
         global_start = time.time()
-        self.parameter_check()
-        self.write_all_params_to_file()
-        self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+        if not alreadysetup:
+            self.parameter_check()
+            self.write_all_params_to_file()
+            self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
         self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
         """
         Here we do the chunking for sending to threads
         """
-        self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
+        self.interatomic_vectors = self.pair_dist_calculation(10)  # Calculate all the interatomic vectors.
         self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
         self.percent_milestones = np.linspace(start=0, stop=len(self.interatomic_vectors), num=10)
         self.iteration_times = np.zeros(len(self.interatomic_vectors))
@@ -495,7 +507,7 @@ class ModelPadfCalculator:
         self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
         self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
         # Here we loop over interatomic vectors
-        chunksize = 500
+        chunksize = self.chunksize
         nchunks = len(self.interatomic_vectors)//chunksize
         print(f'<fast_model_padf.run_fast_matrix_calculation> Working...')
         global_start = time.time()
