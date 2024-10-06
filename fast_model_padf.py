@@ -496,7 +496,7 @@ class ModelPadfCalculator:
         self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
         self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
         # Here we loop over interatomic vectors
-        chunksize = 500
+        chunksize = np.min([500,len(self.interatomic_vectors)])
         nchunks = len(self.interatomic_vectors)//chunksize
         print(f'<fast_model_padf.run_fast_matrix_calculation> Working...')
         global_start = time.time()
