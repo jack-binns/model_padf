@@ -136,7 +136,7 @@ def read_xyz(file):
     with open(file, "r") as xyz:
         for line in xyz:
             splot = line.split()
-            if len(splot) == 4:
+            if len(splot) >= 4:
                 if 'H' != splot[0]:
                     raw_f.append(get_z(splot[0]))
                     raw_x.append(splot[1])
