@@ -41,11 +41,12 @@ if __name__ == '__main__':
     #
     # name of .xyz file containing all the atomic coordinates
     #
+    modelp.use_supercell = p.use_supercell
     modelp.subject_atoms = p.subjectxyz
     if p.use_supercell == True:
         modelp.supercell_atoms = p.supercellxyz
     else:
-        modelp.supercell_atoms = p.supercellxyz 
+        modelp.supercell_atoms = p.subjectxyz 
 
     #modelp.subject_number = -1
 

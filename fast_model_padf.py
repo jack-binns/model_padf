@@ -63,6 +63,7 @@ class ModelPadfCalculator:
         self.calculation_time = 0.0
         self.percent_milestones = np.zeros(0)
         self.iteration_times = np.zeros(0)
+        self.use_supercell = True
 
     def parameter_check(self):
         """
@@ -155,7 +156,10 @@ class ModelPadfCalculator:
         print(f'DEBUG <subject_target_setup>', self.supercell_atoms)
         self.raw_extended_atoms = u.read_xyz(
             f'{self.root}{self.project}{self.supercell_atoms}')  # Take in the raw environment atoms
-        self.extended_atoms = self.clean_extended_atoms()  # Trim to the atoms probed by the subject set
+        if self.use_supercell:
+            self.extended_atoms = self.clean_extended_atoms()  # Trim to the atoms probed by the subject set
+        else:
+            self.extended_atoms = np.copy(self.subject_atoms)
         # if self.com_cluster_flag:
         #     self.output_cluster_xyz()       ## WRITE OUT THE CLUSTER GEOMETRIES
         u.output_reference_xyz(self.subject_atoms, path=f'{self.root}{self.project}{self.tag}_clean_subject_atoms.xyz')
@@ -223,7 +227,8 @@ class ModelPadfCalculator:
         clean_ex = []
         cluster_subject = []
         if not self.com_cluster_flag:
-            for ex_atom in self.raw_extended_atoms:
+            for i, ex_atom in enumerate(self.raw_extended_atoms):
+                print( i+1, "/", len(self.raw_extended_atoms)) 
                 for as_atom in self.subject_atoms:
                     diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], as_atom[0], as_atom[1], as_atom[2])
                     if abs(diff) <= self.rmax:
@@ -335,12 +340,14 @@ class ModelPadfCalculator:
         # print(self.total_contribs, fb_hit_count)
         # np.save(self.root + self.project + self.tag + '_Theta_' + str(k), Theta)
 
-    def pair_dist_calculation(self,writefreq=1):
+    def pair_dist_calculation(self,writefreq=1000, outputpairs=False):
         print(f'<pair_dist_calculation> Calculating pairwise interatomic distances...')
         # interatomic_vectors
+        iv_list = []
         for k, a_i in enumerate(self.subject_atoms):
-            if k % int(len(self.subject_atoms) * writefreq) == 0:
+            if k % int( writefreq) == 0:
                 print(f"{k} / {len(self.subject_atoms)}")
+            """ 
             for a_j in self.extended_atoms:
                 if not np.array_equal(a_i, a_j):
                     mag_r_ij = u.fast_vec_difmag(a_i[0], a_i[1], a_i[2], a_j[0], a_j[1], a_j[2])
@@ -353,10 +360,33 @@ class ModelPadfCalculator:
                         print(f'<pair_dist_calculation> {a_i} {a_j} are problematic')
                     self.n2_contacts.append(mag_r_ij)
                     self.interatomic_vectors.append(r_ij)
+            """
+            # alternative matrix version
+            diff = self.extended_atoms - a_i
+            mags = np.sqrt(np.sum(diff*diff,1))
+            igood = np.where( (mags>0.8) )
+            #print( diff[igood,:].shape, mags[igood].shape, self.extended_atoms[igood,3].shape, "shapes")
+            chunk_a_i = np.concatenate( (np.squeeze(diff[igood,:]), np.squeeze(mags[igood]).reshape((mags[igood].shape[0],1)), self.extended_atoms[igood,3].T*a_i[3]),axis=1)
+            #iv_list += list(chunk_a_i)
+            iv_list.append(chunk_a_i)
+
+            #if k==0:
+            #    ivectors = np.copy(chunk_a_i)
+            #else:
+            #    ivectors = np.concatenate( (ivectors, chunk_a_i), axis=0) 
+        
+        input("Just pausing for a moment:")
+        iv_list = np.array(iv_list)
+        self.interatomic_vectors = iv_list #np.concatenate( iv_list, axis=0) #ivectors       
+        print(self.interatomic_vectors.shape)
+        input("Just pausing for a moment:")
+        exit() 
+        self.n2_contacts = self.interatomic_vectors[:,2] #ivectors[:,2]
+
         np.array(self.n2_contacts)
         print(f'<pair_dist_calculation> {len(self.interatomic_vectors)} interatomic vectors')
-        np.savetxt(self.root + self.project + self.tag + '_atomic_pairs.txt', self.n2_contacts)
-        np.save(self.root + self.project + self.tag + '_interatomic_vectors.npy', self.interatomic_vectors)
+        if outputpairs: np.savetxt(self.root + self.project + self.tag + '_atomic_pairs.txt', self.n2_contacts)
+        if outputpairs: np.save(self.root + self.project + self.tag + '_interatomic_vectors.npy', self.interatomic_vectors)
         # np.savetxt(self.root + self.project + self.tag + '_interatomic_vectors.txt', self.interatomic_vectors)
         print(f'<pair_dist_calculation> ... interatomic distances calculated')
         pdf_r_range = np.arange(start=0, stop=self.rmax, step=(self.r_dist_bin / 10))
@@ -589,7 +619,7 @@ class ModelPadfCalculator:
           sphv = vectors*0.0
           sphv[:,0] = norms
           inorm = np.where( norms > tol )
-          sphv[inorm,1] = np.arccos( vectors[inorm,2]/norms)
+          sphv[inorm,1] = np.arccos( vectors[inorm,2]/norms[inorm])
 
           ix = np.where( (np.abs(vectors[:,0])>tol)*(vectors[:,0]>0) )   #norm of x above thresh; and x positive
           sphv[ix,2] = np.pi/2   + np.arctan( vectors[ix,1]/vectors[ix,0])
@@ -825,31 +855,55 @@ class ModelPadfCalculator:
         self.parameter_check()
         self.write_all_params_to_file()
         self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
-        self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
         """
         Here we do the chunking for sending to threads
         """
-        self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
-        self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
-        np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
-        
+        usenew = True
+
         self.sphvol_evens = np.zeros((self.nr, self.nthvol, self.phivol))
         self.sphvol_odds  = np.zeros((self.nr, self.nthvol, self.phivol))
-        chunksize = np.min([500,len(self.interatomic_vectors)])
-        nchunks = len(self.interatomic_vectors)//chunksize
-        print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
-        global_start = time.time()
-        for k in range(nchunks):
-            print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}')
-            vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
-            for k2 in range(nchunks):
-                #print(f'Correlating chunk index {k+1}/{nchunks}  {k2}/{nchunks}')
-                vectors2 = self.interatomic_vectors[k2*chunksize:(k2+1)*chunksize,:3]
-                voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
-                if (k*chunksize+k2)%2==0:
-                    self.sphvol_evens += voltmp
-                else:
-                    self.sphvol_odds += voltmp
+        if usenew:
+                print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
+                global_start = time.time()
+                for i, a_i in enumerate(self.subject_atoms):
+                        #if i<10000: continue
+                        if i>10000+500: break
+                        all_interatomic_vectors = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
+                        #print( self.extended_atoms.shape, self.extended_atoms[0], a_i, all_interatomic_vectors[0])
+                        norms = np.sqrt(np.sum(all_interatomic_vectors**2,1))
+                        inorm = np.where( norms<self.rmax)
+                        interatomic_vectors = all_interatomic_vectors[inorm]
+                        chunksize = np.min([500,len(interatomic_vectors)])
+                        nchunks = len(interatomic_vectors)//chunksize
+                        if (i%500)==0: print("Subject atoms binned:", i, "/", len(self.subject_atoms), f"time passed {time.time()-global_start}", nchunks, chunksize, len(interatomic_vectors)) 
+                        for k in range(nchunks):
+                            #print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}', np.max(interatomic_vectors))
+                            vectors = interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
+                            voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
+                            if (i)%2==0:
+                                self.sphvol_evens += voltmp
+                            else:
+                                self.sphvol_odds += voltmp
+                         
+                    
+
+        else:
+                chunksize = np.min([500,len(self.interatomic_vectors)])
+                nchunks = len(self.interatomic_vectors)//chunksize
+                self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
+                self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
+                np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
+                
+                print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
+                global_start = time.time()
+                for k in range(nchunks):
+                    print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}')
+                    vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
+                    voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
+                    if (k*chunksize)%2==0:
+                        self.sphvol_evens += voltmp
+                    else:
+                        self.sphvol_odds += voltmp
         
         #plt.figure()
         #plt.imshow( np.sum(self.sphvol_evens[11:14,:,:],0))
@@ -859,7 +913,7 @@ class ModelPadfCalculator:
             f'<fast_model_padf.run_spherical_harmonic_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
 
 
-        self.nlmin = 0
+        self.nlmin = 12
         self.nl = 80
         coeffs_evens = np.zeros( (self.nr, 2, self.nl, self.nl))
         coeffs_odds = np.zeros( (self.nr, 2, self.nl, self.nl))
