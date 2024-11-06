@@ -138,6 +138,7 @@ def read_xyz(file):
             splot = line.split()
             if len(splot) >= 4:
                 if 'H' != splot[0]:
+                    print( get_z(splot[0]))
                     raw_f.append(get_z(splot[0]))
                     raw_x.append(splot[1])
                     raw_y.append(splot[2])
@@ -195,6 +196,8 @@ def get_z(atom_name):
         if atoms.ELEMENTS[element].symbol == atom_name:
             # print(f'FOUND {atoms.ELEMENTS[element].symbol}')
             return atoms.ELEMENTS[element].atomic_number
+        else:
+            return 1
 
 
 def get_id(z):
