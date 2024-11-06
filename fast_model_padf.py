@@ -858,63 +858,58 @@ class ModelPadfCalculator:
         """
         Here we do the chunking for sending to threads
         """
-        usenew = True
-
         self.sphvol_evens = np.zeros((self.nr, self.nthvol, self.phivol))
         self.sphvol_odds  = np.zeros((self.nr, self.nthvol, self.phivol))
-        if usenew:
-                print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
-                global_start = time.time()
-                for i, a_i in enumerate(self.subject_atoms):
-                        #if i<10000: continue
-                        if i>10000+500: break
-                        all_interatomic_vectors = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
-                        #print( self.extended_atoms.shape, self.extended_atoms[0], a_i, all_interatomic_vectors[0])
-                        norms = np.sqrt(np.sum(all_interatomic_vectors**2,1))
-                        inorm = np.where( norms<self.rmax)
-                        interatomic_vectors = all_interatomic_vectors[inorm]
-                        chunksize = np.min([500,len(interatomic_vectors)])
-                        nchunks = len(interatomic_vectors)//chunksize
-                        if (i%500)==0: print("Subject atoms binned:", i, "/", len(self.subject_atoms), f"time passed {time.time()-global_start}", nchunks, chunksize, len(interatomic_vectors)) 
-                        for k in range(nchunks):
-                            #print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}', np.max(interatomic_vectors))
-                            vectors = interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
-                            voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
-                            if (i)%2==0:
-                                self.sphvol_evens += voltmp
-                            else:
-                                self.sphvol_odds += voltmp
-                         
-                    
-
-        else:
-                chunksize = np.min([500,len(self.interatomic_vectors)])
-                nchunks = len(self.interatomic_vectors)//chunksize
-                self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
-                self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
-                np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
-                
-                print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
-                global_start = time.time()
+        print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
+        global_start = time.time()
+        for i, a_i in enumerate(self.subject_atoms):
+                #if i<10000: continue
+                if i>10000+500: break
+                all_interatomic_vectors = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
+                #print( self.extended_atoms.shape, self.extended_atoms[0], a_i, all_interatomic_vectors[0])
+                norms = np.sqrt(np.sum(all_interatomic_vectors**2,1))
+                inorm = np.where( norms<self.rmax)
+                interatomic_vectors = all_interatomic_vectors[inorm]
+                chunksize = np.min([500,len(interatomic_vectors)])
+                nchunks = len(interatomic_vectors)//chunksize
+                if (i%500)==0: print("Subject atoms binned:", i, "/", len(self.subject_atoms), f"time passed {time.time()-global_start}", nchunks, chunksize, len(interatomic_vectors)) 
                 for k in range(nchunks):
-                    print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}')
-                    vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
+                    #print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}', np.max(interatomic_vectors))
+                    vectors = interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
                     voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
-                    if (k*chunksize)%2==0:
+                    if (i)%2==0:
                         self.sphvol_evens += voltmp
                     else:
                         self.sphvol_odds += voltmp
+                 
+            
+        """
+        chunksize = np.min([500,len(self.interatomic_vectors)])
+        nchunks = len(self.interatomic_vectors)//chunksize
+        self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
+        self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
+        np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
         
+        print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
+        global_start = time.time()
+        for k in range(nchunks):
+            print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}')
+            vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
+            voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
+            if (k*chunksize)%2==0:
+                self.sphvol_evens += voltmp
+            else:
+                self.sphvol_odds += voltmp
+        """
         #plt.figure()
         #plt.imshow( np.sum(self.sphvol_evens[11:14,:,:],0))
         #plt.show()
 
         print(
             f'<fast_model_padf.run_spherical_harmonic_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
+    
+        print( "debsug spherical harmonic calc; nl nlmin", self.nl, self.nlmin)
 
-
-        self.nlmin = 12
-        self.nl = 80
         coeffs_evens = np.zeros( (self.nr, 2, self.nl, self.nl))
         coeffs_odds = np.zeros( (self.nr, 2, self.nl, self.nl))
 

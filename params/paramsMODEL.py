@@ -56,6 +56,12 @@ class paramsMODEL(params):
     rmax : float
         maximum value of r in the correlation file. Units: metres
 
+    nl : int
+        order (l) of the maximum spherical harmonic to use in 'spharmonic' calculation
+
+    nlmin : int
+        order (l) of the minimum spherical harmonic to use in 'spharmonic' calculation
+
     use_supercell : Bool
         Compute the pairs between subject file and supercell atoms if True
         If False, only subject atoms are used
@@ -118,6 +124,12 @@ class paramsMODEL(params):
         self.add_parameter("nth", int(100), cmdline="--nth",cmdline2="-nth", help="Number of theta samples",
                         nargs=1,header=ch[0],pathflag=False)
         
+        self.add_parameter("nl", int(32), cmdline="--nl",cmdline2="-nl", help="Order (l) of the largest spherical harmonic to use in the 'spharmonic' calculation",
+                        nargs=1,header=ch[0],pathflag=False)
+        
+        self.add_parameter("nlmin", int(2), cmdline="--nlmin",cmdline2="-nlm", help="Order (l) of the smallest spherical harmonic to use in the 'spharmonic' calculation",
+                        nargs=1,header=ch[0],pathflag=False)
+
         self.add_parameter("nthvol", int(100), cmdline="--nthvol",cmdline2="-nthv", help="Number of theta samples in the 3D volume (histrogram calc only)",
                         nargs=1,header=ch[0],pathflag=False)
         

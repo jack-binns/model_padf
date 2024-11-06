@@ -61,6 +61,10 @@ if __name__ == '__main__':
     modelp.nthvol = p.nthvol
     modelp.phivol = p.nphivol
 
+    # min and max spherical harmonic order to use in the 'spharmonic' calculation
+    modelp.nlmin = p.nlmin
+    modelp.nl    = p.nl
+
     # Scale the radial correlations by this power, i.e. r^(r_power)
     modelp.r_power = p.r_power
 
