@@ -79,7 +79,10 @@ class paramsMODEL(params):
         Number of CPU processors to use    
 
     verbosity : int
-        Report progress during calculation            
+        Report progress during calculation           
+
+    use_atom_weights : Bool
+        If true, each atom is wieghted by no. of electrons; if false, each atom counts as 1. 
     """
 
 
@@ -152,6 +155,9 @@ class paramsMODEL(params):
                             nargs=1,header=ch[0],pathflag=False)   
         
         self.add_parameter("verbosity", 0, cmdline="--verbosity",cmdline2="-v", help="Report progress during the simulation",
+                            nargs=1,header=ch[0],pathflag=False)   
+        
+        self.add_parameter("use_atom_weights", True, cmdline="--use_atom_weights",cmdline2="-uaw", help="Weight each atom by no. of electrons if true; otherwise weight of all atoms is 1.",
                             nargs=1,header=ch[0],pathflag=False)   
 
     def read_config_file(self):
