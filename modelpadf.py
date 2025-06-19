@@ -3,7 +3,7 @@ import numpy as np
 #import array
 import os
 import params.paramsMODEL as params
-import fast_model_padf as fmp
+import fast_model_padf2 as fmp
 
 
 if __name__ == '__main__':
@@ -32,6 +32,7 @@ if __name__ == '__main__':
     # this is a directory for this specific project
     #
     modelp.project = p.outpath.name+"/"
+    modelp.outpath = p.outpath.name+"/"
 
     #
     # a meaningful sample tag
@@ -71,6 +72,10 @@ if __name__ == '__main__':
     modelp.convergence_check_flag = p.check_convergence
     modelp.convergence_target = p.convergence_target
 
+    # Use the atomic weights
+    modelp.use_atom_weights = p.use_atom_weights
+
+
     '''
     Calculation mode.
     'rrprime' :     Calculate the r = r' slice
@@ -87,8 +92,8 @@ if __name__ == '__main__':
     #
     # set processor number
     #
-    # NOT IMPLEMENTED
-    modelp.processor_num = p.nthreads
+    # implemented for spherical harmonic calc only
+    modelp.nthreads = p.nthreads
 
 
     #
