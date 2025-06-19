@@ -1,0 +1,20 @@
+[MODELPADF]
+
+outpath = /blah/
+tag = TESTTESTTESTTEST_c60_nl64_nlmin4
+subjectxyz = C60-Ih.xyz
+supercellxyz = C60-Ih.xyz
+use_supercell = False
+method = spharmonic
+mode = sim
+nr = 48
+nth = 360
+nthvol = 360
+nphivol = 720
+rmax = 10
+nlmin = 4
+nl=64
+check_convergence = False
+convergence_target = 0.99
+r_power = 0
+nthreads = 4
