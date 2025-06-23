@@ -94,6 +94,7 @@ if __name__ == '__main__':
     #
     # implemented for spherical harmonic calc only
     modelp.nthreads = p.nthreads
+    modelp.processor_num = p.nthreads
 
 
     #

@@ -1088,7 +1088,7 @@ class ModelPadfCalculator:
         """
         sphvol_oe = np.zeros((self.nr, self.nthvol, self.phivol,2)) 
         for i, a_i in enumerate(subject_atoms):
-                print(i)
+                print(f"thread {j}, atom {i}/{len(subject_atoms)}", end='\r', flush=True)
                 all_interatomic_vectors = np.zeros( (self.extended_atoms.shape[0], 4) )
                 all_interatomic_vectors[:,:3] = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
                 all_interatomic_vectors[:,3] = self.extended_atoms[:,3]*a_i[3]  # this is the product of the scattering factors                
@@ -1100,7 +1100,7 @@ class ModelPadfCalculator:
                 nchunks = len(interatomic_vectors)//chunksize
                 
                 for k in range(nchunks):
-                    if k==0: print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}', np.max(interatomic_vectors), chunksize)
+                    #if k==0: print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}', np.max(interatomic_vectors), chunksize)
                     vectors = interatomic_vectors[k*chunksize:(k+1)*chunksize,:4]
                     voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol,use_atom_weights=self.use_atom_weights)
                     if i%2==0:
@@ -1108,7 +1108,7 @@ class ModelPadfCalculator:
                     else:
                         sphvol_oe[:,:,:,1] += voltmp
                      
-                    if k==0: print("sum sphvol", np.sum(sphvol_oe) )
+                    #if k==0: print("sum sphvol", np.sum(sphvol_oe) )
         return_dict[j] = sphvol_oe
             
 
@@ -1176,6 +1176,7 @@ class ModelPadfCalculator:
         self.nthreads = self.processor_num
         natoms_per_thread = len(self.subject_atoms)//self.nthreads
         processes = []
+        print( "nthreads", self.nthreads)
         for j in np.arange(self.nthreads):
             print("Main threading loop", j)
             subject_atoms = self.subject_atoms[j*natoms_per_thread:(j+1)*natoms_per_thread]
