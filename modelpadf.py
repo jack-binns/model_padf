@@ -12,8 +12,8 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
         
         padfsum_evens = np.zeros( (modelp.nr, modelp.nr, modelp.nth))
         padfsum_odds  = np.zeros( (modelp.nr, modelp.nr, modelp.nth)) 
-        sphvol_evens = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol))
-        sphvol_odds  = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol)) 
+        #sphvol_evens = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol))
+        #sphvol_odds  = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol)) 
 
         for icell, cell in enumerate(cells):
             print( f"Processor {j}; cell {icell+1} / {len(cells)}") 
@@ -35,10 +35,11 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
             print( f"Processor {j}", np.max(modelp.rolling_Theta_evens)) 
             padfsum_evens += np.copy(modelp.rolling_Theta_evens)
             padfsum_odds += np.copy(modelp.rolling_Theta_odds)
-            sphvol_evens += np.copy(modelp.sphvol_evens)
-            sphvol_odds += np.copy(modelp.sphvol_odds)
+            #sphvol_evens += np.copy(modelp.sphvol_evens)
+            #sphvol_odds += np.copy(modelp.sphvol_odds)
 
-        return_dict[j] = [padfsum_evens, padfsum_odds, sphvol_evens, sphvol_odds]
+        #return_dict[j] = [padfsum_evens, padfsum_odds, sphvol_evens, sphvol_odds]
+        return_dict[j] = [padfsum_evens, padfsum_odds]
 
 
 
@@ -212,20 +213,20 @@ if __name__ == '__main__':
             
             modelp.rolling_Theta_evens = return_dict[0][0]+ return_dict[0][1]
             modelp.rolling_Theta_odds = 0.0*return_dict[0][1]
-            modelp.sphvol_evens = return_dict[0][2]+ return_dict[0][3]
-            modelp.sphvol_odds = 0.0*return_dict[0][3]
+            #modelp.sphvol_evens = return_dict[0][2]+ return_dict[0][3]
+            #modelp.sphvol_odds = 0.0*return_dict[0][3]
 
             for iproc in range(1,p.nthreads):
                 if iproc%2==0:
                     modelp.rolling_Theta_evens += return_dict[iproc][0]+return_dict[iproc][1]
-                    modelp.sphvol_evens += return_dict[iproc][2] +  return_dict[iproc][3]
+                    #modelp.sphvol_evens += return_dict[iproc][2] +  return_dict[iproc][3]
                 else:
                     modelp.rolling_Theta_odds += return_dict[iproc][0]+return_dict[iproc][1]
-                    modelp.sphvol_odds += return_dict[iproc][2]+ return_dict[iproc][3]
+                    #modelp.sphvol_odds += return_dict[iproc][2]+ return_dict[iproc][3]
             
                  
-            np.save(modelp.root + modelp.project + modelp.tag + '_sphvol_odds_tiled', modelp.sphvol_odds)
-            np.save(modelp.root + modelp.project + modelp.tag + '_sphvol_evens_tiled', modelp.sphvol_evens)
+            #np.save(modelp.root + modelp.project + modelp.tag + '_sphvol_odds_tiled', modelp.sphvol_odds)
+            #np.save(modelp.root + modelp.project + modelp.tag + '_sphvol_evens_tiled', modelp.sphvol_evens)
 
  
         else:
