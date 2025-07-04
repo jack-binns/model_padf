@@ -82,7 +82,10 @@ class paramsMODEL(params):
         Report progress during calculation           
 
     use_atom_weights : Bool
-        If true, each atom is wieghted by no. of electrons; if false, each atom counts as 1. 
+        If true, each atom is wieghted by no. of electrons; if false, each atom counts as 1.
+
+    subcellsize : float
+        If greater than 0, then use a subcells to tile the volume (default -1.0) 
     """
 
 
@@ -158,7 +161,11 @@ class paramsMODEL(params):
                             nargs=1,header=ch[0],pathflag=False)   
         
         self.add_parameter("use_atom_weights", True, cmdline="--use_atom_weights",cmdline2="-uaw", help="Weight each atom by no. of electrons if true; otherwise weight of all atoms is 1.",
-                            nargs=1,header=ch[0],pathflag=False)   
+                            nargs=1,header=ch[0],pathflag=False)
+ 
+        self.add_parameter("subcellsize", -1.0, cmdline="--subcellsize" ,cmdline2="-scs", help="if greater than one, tile the volume into subcells and sum the subcell padfs.",
+                        nargs=1,header=ch[0],pathflag=False)
+
 
     def read_config_file(self):
         """Read the values of the input parameters from a text (config) file.

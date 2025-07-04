@@ -291,6 +291,31 @@ class ModelPadfCalculator:
                 selected.append(v)
         return np.array(selected)
 
+    def reduce_subject_atoms_to_subcell(self,limits):
+        """Select a subcell from the atom list"""
+
+        selected = []
+        xmin, xmax = limits[0],limits[1]
+        ymin, ymax = limits[2],limits[3]
+        zmin, zmax = limits[4],limits[5]
+        for v in self.subject_atoms:
+             if (v[0]>xmin)and(v[0]<xmax)and(v[1]>ymin)and(v[1]<ymax)and(v[2]>zmin)and(v[2]<zmax):
+                selected.append(v)
+        self.subject_atoms = np.array(selected)
+
+    def box_dimensions_from_subject_atoms():
+            self.x_min = np.min(self.subject_atoms[:, 0])
+            self.y_min = np.min(self.subject_atoms[:, 1])
+            self.z_min = np.min(self.subject_atoms[:, 2])
+
+            self.x_max = np.max(self.subject_atoms[:, 0])
+            self.y_max = np.max(self.subject_atoms[:, 1])
+            self.z_max = np.max(self.subject_atoms[:, 2])
+
+            self.x_wid = self.x_max - self.x_min
+            self.y_wid = self.y_max - self.y_min
+            self.z_wid = self.z_max - self.z_min
+
     def bin_cor_vec_to_theta(self, cor_vec, fz, array):
         """
         Bin and then add the correlation vector to the
@@ -855,6 +880,9 @@ class ModelPadfCalculator:
         self.parameter_check()
         self.write_all_params_to_file()
         self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+
+        if self.subcellsize > 0.0: self.reduce_subject_atoms_to_subcell(self.limits)
+
         """
         Here we do the chunking for sending to threads
         """
@@ -863,8 +891,6 @@ class ModelPadfCalculator:
         print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
         global_start = time.time()
         for i, a_i in enumerate(self.subject_atoms):
-                #if i<10000: continue
-                if i>10000+500: break
                 all_interatomic_vectors = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
                 #print( self.extended_atoms.shape, self.extended_atoms[0], a_i, all_interatomic_vectors[0])
                 norms = np.sqrt(np.sum(all_interatomic_vectors**2,1))

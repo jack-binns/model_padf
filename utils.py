@@ -127,8 +127,8 @@ def subject_atom_reader(raw, ucds=None):
     return atoms
 
 
-def read_xyz(file):
-    print(f"<utils.read_xyz> Finding atoms in {file}...")
+def read_xyz(file, verbosity=0):
+    if verbosity>0: print(f"<utils.read_xyz> Finding atoms in {file}...")
     raw_x = []
     raw_y = []
     raw_z = []
@@ -152,7 +152,7 @@ def read_xyz(file):
     raw_y = [float(y) for y in raw_y]
     raw_z = [float(z) for z in raw_z]
     raw_atoms = np.column_stack((raw_x, raw_y, raw_z, raw_f))
-    print("<utils.read_xyz> Atom set contains ", len(raw_x), " atoms found in " + file)
+    if verbosity>0: print("<utils.read_xyz> Atom set contains ", len(raw_x), " atoms found in " + file)
     return raw_atoms
 
 
@@ -174,8 +174,8 @@ def calc_rfactor(array_a, array_b):
     return r_p
 
 
-def output_reference_xyz(atom_list, path):
-    print(f"<utils.output_reference_xyz> Writing to {path}")
+def output_reference_xyz(atom_list, path, verbosity=0):
+    if verbosity>0: print(f"<utils.output_reference_xyz> Writing to {path}")
     with open(path, 'w') as foo:
         foo.write(f'{len(atom_list)}\n')
         foo.write(f'{path}\n')

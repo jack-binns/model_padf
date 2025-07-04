@@ -139,13 +139,14 @@ class ModelPadfCalculator:
     """
 
     def __init__(self, outpath="", tag="", supercell_atoms="", subject_atoms="", rmin=0.0, rmax=10.0, nr=100,\
-                 nth=180, nthvol=180,nthreads=1 ):
+                 nth=180, nthvol=180,nthreads=1, verbosity=1 ):
 
         self.outpath = outpath
         self.tag = tag
-        self.supercell_atoms = supercell_atoms  # the xyz file contains the cartesian coords of the crystal structure expanded
+        self.supercellxyz = supercell_atoms  # the xyz file contains the cartesian coords of the crystal structure expanded
         # to include r_probe
         self.subject_atoms = ""  # the cif containing the asymmetric unit
+        self.subjectxyz = ""  # the cif containing the asymmetric unit
         # probe radius
         self.rmin = rmin
         self.rmax = rmax
@@ -162,7 +163,7 @@ class ModelPadfCalculator:
         self.processor_num = nthreads
         self.chunksize = 50
         #self.Pool = mp.Pool(self.processor_num)
-        self.verbosity = 0
+        self.verbosity = 1
         self.rolling_Theta = np.zeros(0)
         self.rolling_Theta_odds = np.zeros(0)
         self.rolling_Theta_evens = np.zeros(0)
@@ -189,17 +190,19 @@ class ModelPadfCalculator:
         """
         self.r_dist_bin = self.rmax / self.nr
         self.angular_bin = 180 / self.nth
-        print('.......................................')
-        print('....Atomistic Model PADF Calculator....')
-        print('.......................................')
-        print(f'<parameter_check>: Real space parameters...')
-        print(f'<parameter_check>: rmax : {self.rmax} ')
-        print(f'<parameter_check>: nr : {self.nr} ')
-        print(f'<parameter_check>: r_dist_bin : {self.r_dist_bin} ')
-        print(f'<parameter_check>: Angular parameters...')
-        print(f'<parameter_check>: nth : {self.nth}')
-        print(f'<parameter_check>: angular_bin : {self.angular_bin}')
-        print(f'<parameter_check>: model PADF dimensions: {self.nr, self.nr, self.nth}')
+
+        if self.verbosity >0:
+            print('.......................................')
+            print('....Atomistic Model PADF Calculator....')
+            print('.......................................')
+            print(f'<parameter_check>: Real space parameters...')
+            print(f'<parameter_check>: rmax : {self.rmax} ')
+            print(f'<parameter_check>: nr : {self.nr} ')
+            print(f'<parameter_check>: r_dist_bin : {self.r_dist_bin} ')
+            print(f'<parameter_check>: Angular parameters...')
+            print(f'<parameter_check>: nth : {self.nth}')
+            print(f'<parameter_check>: angular_bin : {self.angular_bin}')
+            print(f'<parameter_check>: model PADF dimensions: {self.nr, self.nr, self.nth}')
 
     # yes
     def get_dimension(self):
@@ -213,14 +216,13 @@ class ModelPadfCalculator:
             The number of dimensions of the calculated PADF (=3 for whole PADF; =2 for a slice)
         """
         if self.mode == 'rrprime':
-            print("<get_dimension>: Calculating r = r' slice")
+            if self.verbosity > 0: print("<get_dimension>: Calculating r = r' slice")
             self.dimension = 2
         elif self.mode == 'rrtheta':
-            print("<get_dimension>: Calculating r, r', theta slices")
-            # run_rrtheta(model_padf_instance)
+            if self.verbosity > 0: print("<get_dimension>: Calculating r, r', theta slices")
             pass
         elif self.mode == 'stm':
-            print("<get_dimension>: Calculating Theta(r,r',theta) directly...")
+            if self.verbosity > 0: print("<get_dimension>: Calculating Theta(r,r',theta) directly...")
             self.dimension = 3
         return self.dimension
 
@@ -275,18 +277,19 @@ class ModelPadfCalculator:
             list of atoms in the extended (supercell) volume
             if supercell is not used, then the extended atoms are equal to the subject atoms
         """
-        print(f'<subject_target_setup> Reading in subject set...')
+        if self.verbosity>0: print(f'<subject_target_setup> Reading in subject set...')
         self.subject_atoms = u.read_xyz(
-            f'{self.subject_atoms}')  # Read the full asymmetric unit
+            f'{self.subjectxyz}')  # Read the full asymmetric unit
         if self.com_cluster_flag:
             self.subject_atoms = self.clean_subject_atoms()
 
-        print(f'<subject_target_setup> Reading in extended atom set...')
-        print(f'DEBUG <subject_target_setup>', self.root)
-        print(f'DEBUG <subject_target_setup>', self.project)
-        print(f'DEBUG <subject_target_setup>', self.supercell_atoms)
+        if self.verbosity>0:
+            print(f'<subject_target_setup> Reading in extended atom set...')
+            print(f'DEBUG <subject_target_setup>', self.root)
+            print(f'DEBUG <subject_target_setup>', self.project)
+            print(f'DEBUG <subject_target_setup>', self.supercellxyz)
         self.raw_extended_atoms = u.read_xyz(
-            f'{self.supercell_atoms}')  # Take in the raw environment atoms
+            f'{self.supercellxyz}')  # Take in the raw environment atoms
         if self.use_supercell:
             self.extended_atoms = self.clean_extended_atoms()  # Trim to the atoms probed by the subject set
         else:
@@ -319,7 +322,7 @@ class ModelPadfCalculator:
             loop_cos = u.cossim_measure(self.rolling_Theta_odds, self.rolling_Theta_evens)
             # print(f"{loop_cos=}")
             self.loop_similarity_array.append([k, loop_cos])
-            if self.verbosity == 1:
+            if self.verbosity > 1:
                 print(
                     f"| {k} / {len(self.interatomic_vectors)} | Odd/even cosine similarity == {loop_cos}")
             if k % 100 == 0:
@@ -338,7 +341,7 @@ class ModelPadfCalculator:
         time_remaining = np.mean(np.array(self.iteration_times[:k + 1])) * (len(self.iteration_times) - k)
         # print(cycle_time)
         # print(time_remaining)
-        if self.verbosity == 1:
+        if self.verbosity > 1:
             if time_remaining > 3600:
                 print(
                     f"| {k} / {len(self.interatomic_vectors)} | Estimate {round(time_remaining / 3600, 3)} hr remaining")
@@ -357,7 +360,7 @@ class ModelPadfCalculator:
         clean_ex : numpy array
             extended atoms with atoms beyond r_probe removed and, if selected, centre of mass clustering applied.
         """
-        print(f'<fast_model_padf.clean_extended_atoms> Trimming atom sets to rmax')
+        if self.verbosity>0: print(f'<fast_model_padf.clean_extended_atoms> Trimming atom sets to rmax')
         clean_ex = []
         cluster_subject = []
         if not self.com_cluster_flag:
@@ -419,6 +422,45 @@ class ModelPadfCalculator:
         print(
             f"<clean_subject_atoms>: Subject atom set has been reduced to {len(cluster_subject)} atoms within {self.com_radius} radius")
         return np.array(cluster_subject)
+
+    
+    def reduce_subject_atoms_to_subcell(self,limits):
+        """Select a subcell from the atom list"""
+
+        print( "<reduce_subject_atoms> Before len(self.subject_atoms)", len(self.subject_atoms), "\n")
+        xmin, xmax, xcen = limits[0],limits[1], 0.5*(limits[1]+limits[0])
+        ymin, ymax, ycen = limits[2],limits[3], 0.5*(limits[3]+limits[2])
+        zmin, zmax, zcen = limits[4],limits[5], 0.5*(limits[5]+limits[4])
+        r = np.min( [np.abs(xmax-xcen), np.abs(ymax-ycen), np.abs(zmax-zcen)])
+        print( "r for reduction", r)
+        selected = []
+        for v in self.subject_atoms:
+             norm = np.sqrt( (v[0]-xcen)**2 + (v[1]-ycen)**2 + (v[2]-zcen)**2 )
+             if (v[0]>xmin)and(v[0]<xmax)and(v[1]>ymin)and(v[1]<ymax)and(v[2]>zmin)and(v[2]<zmax)and(norm<r):
+                selected.append(v)
+        self.subject_atoms = np.array(selected)
+        print( "<reduce_subject_atoms> After len(self.subject_atoms)", len(self.subject_atoms), "\n")
+
+        selected = []
+        for v in self.extended_atoms:
+             norm = np.sqrt( (v[0]-xcen)**2 + (v[1]-ycen)**2 + (v[2]-zcen)**2 )
+             if (v[0]>xmin)and(v[0]<xmax)and(v[1]>ymin)and(v[1]<ymax)and(v[2]>zmin)and(v[2]<zmax)and(norm<r):
+                selected.append(v)
+        self.extended_atoms = np.array(selected)
+
+    def box_dimensions_from_subject_atoms(self):
+            """Identify the size of the box in x, y, and z dimensions"""
+            self.x_min = np.min(self.subject_atoms[:, 0])
+            self.y_min = np.min(self.subject_atoms[:, 1])
+            self.z_min = np.min(self.subject_atoms[:, 2])
+
+            self.x_max = np.max(self.subject_atoms[:, 0])
+            self.y_max = np.max(self.subject_atoms[:, 1])
+            self.z_max = np.max(self.subject_atoms[:, 2])
+
+            self.x_wid = self.x_max - self.x_min
+            self.y_wid = self.y_max - self.y_min
+            self.z_wid = self.z_max - self.z_min
 
     # used in serial calcultion
     def bin_cor_vec_to_theta(self, cor_vec, fz, array):
@@ -596,7 +638,8 @@ class ModelPadfCalculator:
         global_start = time.time()
         self.parameter_check()
         self.write_all_params_to_file()
-        self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+        self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell 
+        if self.subcellsize > 0.0: self.reduce_subject_atoms_to_subcell(self.limits)
         self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
         """
         Here we do the chunking for sending to threads
@@ -712,6 +755,8 @@ class ModelPadfCalculator:
             self.parameter_check()
             self.write_all_params_to_file()
             self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+            if self.subcellsize > 0.0: self.reduce_subject_atoms_to_subcell(self.limits)
+
         self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
         """
         Here we do the chunking for sending to threads
@@ -799,7 +844,7 @@ class ModelPadfCalculator:
 
     # used in spherical harmonic volume...
     # need to add weights to this calculation...
-    def calc_sphvol_from_interatomic_vectors(self,vectors,nr=50,nth=90,nphi=90, tol=5e-2, use_atom_weights=True):
+    def calc_sphvol_from_interatomic_vectors(self,vectors,nr=50,nth=90,nphi=90, tol=5e-6, use_atom_weights=True):
           """
           Calculate a 3D pair distribution in spherical coordiantes from a set of interatomic vectors
 
@@ -830,7 +875,7 @@ class ModelPadfCalculator:
           sphv = np.zeros( (vectors.shape[0], 3) )
           sphv[:,0] = norms
           inorm = np.where( norms > tol )
-          sphv[inorm,1] = np.arccos( vectors[inorm,2]/norms[inorm])
+          sphv[inorm,1] =  np.arccos(vectors[inorm,2]/norms[inorm])
 
           ix = np.where( (np.abs(vectors[:,0])>tol)*(vectors[:,0]>0) )   #norm of x above thresh; and x positive
           sphv[ix,2] = np.pi/2   + np.arctan( vectors[ix,1]/vectors[ix,0])
@@ -853,7 +898,8 @@ class ModelPadfCalculator:
                 outvol, edges = np.histogramdd( sphv, bins=(nr,nth,nphi), range=((0,self.rmax),(0,np.pi),(0,2*np.pi)), weights=vectors[:,3])
           else:
                 outvol, edges = np.histogramdd( sphv, bins=(nr,nth,nphi), range=((0,self.rmax),(0,np.pi),(0,2*np.pi)))
- 
+
+
           #sphv[ix,2] += np.pi
           #outvol2, edges = np.histogramdd( sphv, bins=(nr,nth,nphi), range=((0,self.rmax),(0,np.pi),(0,2*np.pi)))
           #outvol[:,:,nphi//2:] = outvol[:,:,:nphi//2] 
@@ -905,6 +951,10 @@ class ModelPadfCalculator:
         self.parameter_check()
         self.write_all_params_to_file()
         self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+        
+
+        if self.subcellsize > 0.0: self.reduce_subject_atoms_to_subcell(self.limits)
+
         self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
         """
         Here we do the chunking for sending to threads
@@ -1109,6 +1159,17 @@ class ModelPadfCalculator:
                         sphvol_oe[:,:,:,1] += voltmp
                      
                     #if k==0: print("sum sphvol", np.sum(sphvol_oe) )
+        
+    
+        #
+        # SINTHETA CORRECTION (ASSUMING THETA SAMPLING)
+        #  
+        anglegrid = np.mgrid[:self.nr,:self.nthvol,:self.phivol,:2]
+        thgrid = anglegrid[1]*np.pi/self.nthvol
+        sthgrid = np.sin(thgrid)
+        ith = sthgrid>1e-2
+        sphvol_oe[ith] = sphvol_oe[ith]/sthgrid[ith]
+ 
         return_dict[j] = sphvol_oe
             
 
@@ -1127,14 +1188,20 @@ class ModelPadfCalculator:
 
         global_start = time.time()
         self.parameter_check()
-        self.write_all_params_to_file()
+        self.write_all_params_to_file() 
         self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+        ########self.subject_atoms = self.subject_atoms[:4000] #HACK!!!!
+        
+        if self.subcellsize > 0.0: 
+            self.reduce_subject_atoms_to_subcell(self.limits)
+
+
         """
         Here we do the chunking for sending to threads
         """
         self.sphvol_evens = np.zeros((self.nr, self.nthvol, self.phivol))
         self.sphvol_odds  = np.zeros((self.nr, self.nthvol, self.phivol))
-        print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
+        if self.verbosity>0: print(f'<fast_model_padf.run_fast_spherical_harmonic_calculation> Working...')
         global_start = time.time()
         """
         # the original version of the spherical harmonic calculation without the threading
@@ -1173,37 +1240,44 @@ class ModelPadfCalculator:
         #
         # The threaded version of the spherical harmonic calculation
         #
-        self.nthreads = self.processor_num
-        natoms_per_thread = len(self.subject_atoms)//self.nthreads
-        processes = []
-        print( "nthreads", self.nthreads)
-        for j in np.arange(self.nthreads):
-            print("Main threading loop", j)
-            subject_atoms = self.subject_atoms[j*natoms_per_thread:(j+1)*natoms_per_thread]
-            p = mp.Process(target=self.thread_subject_atom_loop_sph, \
-                            args=(subject_atoms,j,return_dict))
-            p.start()
-            processes.append(p)
+        if self.processor_num>1:
+            self.nthreads = self.processor_num
+            natoms_per_thread = len(self.subject_atoms)//self.nthreads
+            processes = []
+            print( "nthreads, atoms_per_thread, total atoms", self.nthreads, natoms_per_thread, len(self.subject_atoms))
+            for j in np.arange(self.nthreads):
+                print("Main threading loop", j)
+                subject_atoms = self.subject_atoms[j*natoms_per_thread:(j+1)*natoms_per_thread]
+                p = mp.Process(target=self.thread_subject_atom_loop_sph, \
+                                args=(subject_atoms,j,return_dict))
+                p.start()
+                processes.append(p)
 
-        print("joining")
-        for p in processes:
-            p.join()
-        
-        for j in np.arange(self.nthreads):
-            self.sphvol_evens += return_dict[j][:,:,:,0]
-            self.sphvol_odds += return_dict[j][:,:,:,1]
-                                 
+            print("joining")
+            for p in processes:
+                p.join()
+            
+            for j in np.arange(self.nthreads):
+                self.sphvol_evens += return_dict[j][:,:,:,0]
+                self.sphvol_odds += return_dict[j][:,:,:,1]
+        else:
+            sphvol_list = [0]
+            print( "len subject atoms", len(self.subject_atoms),"\n")
+            self.thread_subject_atom_loop_sph(self.subject_atoms,0,sphvol_list)
+            self.sphvol_evens = sphvol_list[0][:,:,:,0]
+            self.sphvol_odds = sphvol_list[0][:,:,:,1]
+                                             
 
         
-        np.save( "sphvol_evens.npy", self.sphvol_evens)
+        np.save( self.outpath+f"{self.tag}_sphvol_evens.npy", self.sphvol_evens)
         #plt.figure()
         #plt.imshow( np.sum(self.sphvol_evens[11:14,:,:],0))
         #plt.show()
 
-        print(
-            f'<fast_model_padf.run_spherical_harmonic_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
+        #print(
+        #    f'<fast_model_padf.run_spherical_harmonic_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
     
-        print( "debug spherical harmonic calc; nl nlmin", self.nl, self.nlmin)
+        #print( "debug spherical harmonic calc; nl nlmin", self.nl, self.nlmin)
 
         coeffs_evens = np.zeros( (self.nr, 2, self.nl, self.nl))
         coeffs_odds = np.zeros( (self.nr, 2, self.nl, self.nl))
@@ -1224,7 +1298,6 @@ class ModelPadfCalculator:
 
         
         coords = np.mgrid[:self.nr,:self.nr,:self.nth]
-        print( coords.shape )
         r = coords[0]
         th = coords[2]*2*np.pi/self.nth
 
@@ -1240,10 +1313,11 @@ class ModelPadfCalculator:
         np.save(self.outpath + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
 
         self.calculation_time = time.time() - global_start
-        print(
-            f"<fast_model_padf.run_fast_model_calculation> run_fast_model_calculation run time = {self.calculation_time} seconds")
-        print(
-            f"<fast_model_padf.run_fast_model_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
+        if self.verbosity>0:
+            print(
+                f"<fast_model_padf.run_fast_model_calculation> run_fast_model_calculation run time = {self.calculation_time} seconds")
+            print(
+                f"<fast_model_padf.run_fast_model_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
         self.write_calculation_summary()
         
 # if __name__ == '__main__':
