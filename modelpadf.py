@@ -6,6 +6,7 @@ import params.paramsMODEL as params
 import fast_model_padf2 as fmp
 import multiprocessing as mp
 import copy
+import time
 
 def thread_subcell_model_padf(cells, j, modelp, method, return_dict): 
 
@@ -18,19 +19,18 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
         for icell, cell in enumerate(cells):
             print( f"Processor {j}; cell {icell+1} / {len(cells)}") 
             ia, ib, ic = cell[0], cell[1], cell[2] 
-            modelp.limits = np.array([ia*modelp.subcellsize,(ia+1)*modelp.subcellsize, \
-                        ib*modelp.subcellsize,(ib+1)*modelp.subcellsize,ic*modelp.subcellsize,(ic+1)*modelp.subcellsize])   
+            modelp.limits = np.array([ia*modelp.subcellsize+modelp.x_min,(ia+1)*modelp.subcellsize+modelp.x_min, \
+                        ib*modelp.subcellsize+modelp.y_min,(ib+1)*modelp.subcellsize+modelp.y_min,\
+                        ic*modelp.subcellsize+modelp.z_min,(ic+1)*modelp.subcellsize+modelp.z_min])   
 
             if method == 'serial':
                 fmp.ModelPadfCalculator.run_fast_serial_calculation(modelp)
             elif method=='matrix':
                 fmp.ModelPadfCalculator.run_fast_matrix_calculation(modelp)
-            elif method=='histogram':
-                fmp.ModelPadfCalculator.run_histogram_calculation(modelp)   
             elif method == 'spharmonic':
                 fmp.ModelPadfCalculator.run_spherical_harmonic_calculation(modelp)   
             else:
-                print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
+                print(" <method> parameter is not one of the valid options: serial, matrix, spharmonic")
 
             print( f"Processor {j}", np.max(modelp.rolling_Theta_evens)) 
             padfsum_evens += np.copy(modelp.rolling_Theta_evens)
@@ -38,17 +38,29 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
             #sphvol_evens += np.copy(modelp.sphvol_evens)
             #sphvol_odds += np.copy(modelp.sphvol_odds)
 
+            """
+            if icell == 0:
+                modelp.write_subject_atoms_to_file()       
+        
+            """ 
+
         #return_dict[j] = [padfsum_evens, padfsum_odds, sphvol_evens, sphvol_odds]
         return_dict[j] = [padfsum_evens, padfsum_odds]
 
 
 
 if __name__ == '__main__':
+
+    start = time.time()
+
     #
     # set up parameter class
     #
     p = params.paramsMODEL()
     #print("pypadf version ",p.version,"\n")
+
+    print(" MODELPADF.py ")
+    print( "version :", p.version, "\n") 
 
     #
     # Read input parameters from a file
@@ -151,6 +163,12 @@ if __name__ == '__main__':
     #
     # Run the calculation!
     #
+    modelp.calculate_model_padf(method=p.method, nthreads=p.nthreads)
+
+
+    print( "Model PADF calculation took ", time.time()-start, "seconds")
+
+"""
     # pmp.ModelPADF.run(modelp)
     if modelp.subcellsize < 0.0:
         print( "Calculation will NOT be split into subcells")
@@ -159,14 +177,12 @@ if __name__ == '__main__':
             fmp.ModelPadfCalculator.run_fast_serial_calculation(modelp)
         elif p.method=='matrix':
             fmp.ModelPadfCalculator.run_fast_matrix_calculation(modelp)
-        elif p.method=='histogram':
-            fmp.ModelPadfCalculator.run_histogram_calculation(modelp)   
         elif p.method == 'spharmonic':
             fmp.ModelPadfCalculator.run_spherical_harmonic_calculation(modelp)   
         else:
             print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
     else:
-
+        modelp.tag += "_tiled"
         modelp.processor_num = 1 #HANDLE THE THREADING IN THIS SCRIPT, ENURE FAST MODEL PADF DOES NOT USE THREADING
         modelp.parameter_check()
         modelp.write_all_params_to_file()
@@ -174,8 +190,8 @@ if __name__ == '__main__':
 
         modelp.subject_atoms, modelp.extended_atoms = modelp.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
         modelp.box_dimensions_from_subject_atoms()
+        print( "x dims:", modelp.x_min, modelp.x_max, modelp.x_wid)
         na, nb, nc = int(modelp.x_wid/modelp.subcellsize), int(modelp.x_wid/modelp.subcellsize), int(modelp.x_wid/modelp.subcellsize)
-
         cellindices = []
         for ia in range(na): 
             for ib in range(nb): 
@@ -231,18 +247,17 @@ if __name__ == '__main__':
  
         else:
            #single thread
-            for ia in range(na): 
-                for ib in range(nb): 
-                    for ic in range(nc): 
-                        modelp.limits = np.array([ia*modelp.subcellsize,(ia+1)*modelp.subcellsize, \
-                                    ib*modelp.subcellsize,(ib+1)*modelp.subcellsize,ic*modelp.subcellsize,(ic+1)*modelp.subcellsize])   
+            for ia in range(na+1): 
+                for ib in range(nb+1): 
+                    for ic in range(nc+1): 
+                        modelp.limits = np.array([modelp.x_min+ia*modelp.subcellsize,modelp.x_min+(ia+1)*modelp.subcellsize, \
+                                                    modelp.y_min+ib*modelp.subcellsize,modelp.y_min+(ib+1)*modelp.subcellsize,
+                                                    modelp.z_min+ic*modelp.subcellsize,modelp.z_min+(ic+1)*modelp.subcellsize])   
 
                         if p.method == 'serial':
                             fmp.ModelPadfCalculator.run_fast_serial_calculation(modelp)
                         elif p.method=='matrix':
                             fmp.ModelPadfCalculator.run_fast_matrix_calculation(modelp)
-                        elif p.method=='histogram':
-                            fmp.ModelPadfCalculator.run_histogram_calculation(modelp)   
                         elif p.method == 'spharmonic':
                             fmp.ModelPadfCalculator.run_spherical_harmonic_calculation(modelp)   
                         else:
@@ -254,11 +269,16 @@ if __name__ == '__main__':
                         else:
                             padfsum_evens += np.copy(modelp.rolling_Theta_evens)
                             padfsum_odds += np.copy(modelp.rolling_Theta_odds)
+
+                        if ia==0 and ib==0 and ic==0: 
+                            modelp.write_subject_atoms_to_xyz( modelp.root+modelp.project+modelp.tag+'crop_tiled_circ.xyz')
+                            exit()
        
             modelp.rolling_Theta_evens = padfsum_evens
             modelp.rolling_Theta_odds  = padfsum_odds
+
  
-    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_total_sum_tiled', modelp.rolling_Theta_odds + modelp.rolling_Theta_evens)
-    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_odds_sum_tiled', modelp.rolling_Theta_odds)
-    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_evens_sum_tiled', modelp.rolling_Theta_evens)
-           
+    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_total_sum', modelp.rolling_Theta_odds + modelp.rolling_Theta_evens)
+    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_odds_sum', modelp.rolling_Theta_odds)
+    np.save(modelp.root + modelp.project + modelp.tag + '_mPADF_evens_sum', modelp.rolling_Theta_evens)
+"""           

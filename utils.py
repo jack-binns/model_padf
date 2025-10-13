@@ -17,7 +17,7 @@ def sorted_nicely(ls):
 def fast_vec_angle(x1, x2, x3, y1, y2, y3):
     """
     Returns the angle between two vectors
-    in range 0 - 90 deg
+    in range 0 - 180 deg
     :return theta in radians
     """
     mag1 = m.sqrt(x1 ** 2 + x2 ** 2 + x3 ** 2)

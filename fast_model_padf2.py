@@ -13,6 +13,48 @@ import utils as u
 import pyshtools as pysh
 from scipy.special import spherical_jn, legendre
 import multiprocessing as mp
+import copy
+
+
+def thread_subcell_model_padf(cells, j, modelp, method, return_dict): 
+    """
+    #    calculation of model padf from subcells of the volume, via multiprocessing
+    """
+    
+    padfsum_evens = np.zeros( (modelp.nr, modelp.nr, modelp.nth))
+    padfsum_odds  = np.zeros( (modelp.nr, modelp.nr, modelp.nth)) 
+    #sphvol_evens = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol))
+    #sphvol_odds  = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol)) 
+
+    for icell, cell in enumerate(cells):
+        print( f"Processor {j}; cell {icell+1} / {len(cells)}", end='\r', flush=True) 
+        ia, ib, ic = cell[0], cell[1], cell[2] 
+        modelp.limits = np.array([ia*modelp.subcellsize+modelp.x_min,(ia+1)*modelp.subcellsize+modelp.x_min, \
+                    ib*modelp.subcellsize+modelp.y_min,(ib+1)*modelp.subcellsize+modelp.y_min,\
+                    ic*modelp.subcellsize+modelp.z_min,(ic+1)*modelp.subcellsize+modelp.z_min])   
+
+        if method == 'serial':
+            ModelPadfCalculator.run_fast_serial_calculation(modelp)
+        elif method=='matrix':
+            ModelPadfCalculator.run_fast_matrix_calculation(modelp)
+        elif method == 'spharmonic':
+            ModelPadfCalculator.run_spherical_harmonic_calculation(modelp)   
+        else:
+            print(" <method> parameter is not one of the valid options: serial, matrix, spharmonic")
+
+        padfsum_evens += np.copy(modelp.rolling_Theta_evens)
+        padfsum_odds += np.copy(modelp.rolling_Theta_odds)
+        #sphvol_evens += np.copy(modelp.sphvol_evens)
+        #sphvol_odds += np.copy(modelp.sphvol_odds)
+
+        if j==0 and icell==0: 
+            modelp.write_subject_atoms_to_xyz( modelp.root+modelp.project+modelp.tag+'crop_tiled_circ.xyz')
+
+    return_dict[j] = [padfsum_evens, padfsum_odds]
+
+
+
+
 
 class ModelPadfCalculator:
     """ 
@@ -263,6 +305,18 @@ class ModelPadfCalculator:
             f.write(f'Total number of contributing contacts {self.total_contribs}\n')
         np.savetxt(self.outpath + f'{self.tag}_similarity_log.txt', np.array(self.loop_similarity_array))
 
+    def write_subject_atoms_to_xyz(self, fname, element="C"):
+        """
+        Saves current subject atoms to file (useful if subject atoms have been cropped)
+        """
+        with open( fname, 'w') as f:
+            f.write( str(self.subject_atoms.shape[0])+"\n")
+            f.write( "cropped subject atoms\n" )
+            txt = "{x:12.6f}{y:12.6f}{z:12.6f}"
+            for i, xyz in enumerate(self.subject_atoms):
+                f.write(f" {element}"+txt.format(x=xyz[0],y=xyz[1],z=xyz[2]) )
+                if i<self.subject_atoms.shape[0]-1: f.write("\n")
+
     # yes
     def subject_target_setup(self):
         """
@@ -365,7 +419,7 @@ class ModelPadfCalculator:
         cluster_subject = []
         if not self.com_cluster_flag:
             for i, ex_atom in enumerate(self.raw_extended_atoms):
-                print( i+1, "/", len(self.raw_extended_atoms)) 
+                #print( i+1, "/", len(self.raw_extended_atoms)) 
                 for as_atom in self.subject_atoms:
                     diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], as_atom[0], as_atom[1], as_atom[2])
                     if abs(diff) <= self.rmax:
@@ -427,19 +481,17 @@ class ModelPadfCalculator:
     def reduce_subject_atoms_to_subcell(self,limits):
         """Select a subcell from the atom list"""
 
-        print( "<reduce_subject_atoms> Before len(self.subject_atoms)", len(self.subject_atoms), "\n")
         xmin, xmax, xcen = limits[0],limits[1], 0.5*(limits[1]+limits[0])
         ymin, ymax, ycen = limits[2],limits[3], 0.5*(limits[3]+limits[2])
         zmin, zmax, zcen = limits[4],limits[5], 0.5*(limits[5]+limits[4])
-        r = np.min( [np.abs(xmax-xcen), np.abs(ymax-ycen), np.abs(zmax-zcen)])
-        print( "r for reduction", r)
+        #r = np.min( [np.abs(xmax-xcen), np.abs(ymax-ycen), np.abs(zmax-zcen)])
+        r = np.min( [np.abs(xmax-xcen), np.abs(ymax-ycen), np.abs(zmax-zcen), np.abs(xmin-xcen),np.abs(ymin-ycen),np.abs(zmin-zcen)])
         selected = []
         for v in self.subject_atoms:
              norm = np.sqrt( (v[0]-xcen)**2 + (v[1]-ycen)**2 + (v[2]-zcen)**2 )
              if (v[0]>xmin)and(v[0]<xmax)and(v[1]>ymin)and(v[1]<ymax)and(v[2]>zmin)and(v[2]<zmax)and(norm<r):
                 selected.append(v)
         self.subject_atoms = np.array(selected)
-        print( "<reduce_subject_atoms> After len(self.subject_atoms)", len(self.subject_atoms), "\n")
 
         selected = []
         for v in self.extended_atoms:
@@ -493,6 +545,7 @@ class ModelPadfCalculator:
             r1_index = (np.abs(r_yard_stick - cor_vec[0])).argmin()
             r2_index = (np.abs(r_yard_stick - cor_vec[1])).argmin()
             th_index = (np.abs(th_yard_stick - cor_vec[-1])).argmin()
+            #if r1_index==r2_index: print( "th_index", th_index)
             array[r1_index, r2_index, th_index] = array[r1_index, r2_index, th_index] + fz
             if self.r12_reflection:
                 array[r2_index, r1_index, th_index] = array[r2_index, r1_index, th_index] + fz
@@ -518,6 +571,7 @@ class ModelPadfCalculator:
                 continue
             theta = u.fast_vec_angle(r_ij[0], r_ij[1], r_ij[2], r_xy[0], r_xy[1], r_xy[2])
             fprod = r_ij[4] * r_xy[4]
+            #if (r_ij[3]==r_xy[3]) and (r_ij[3]>0.5): print( r_ij[3], r_xy[3], theta, theta*180/np.pi) 
             self.bin_cor_vec_to_theta([r_ij[3], r_xy[3], theta], fprod, self.rolling_Theta)
             if k % 2 == 0:
                 self.bin_cor_vec_to_theta([r_ij[3], r_xy[3], theta], fprod, self.rolling_Theta_evens)
@@ -549,7 +603,7 @@ class ModelPadfCalculator:
         for k, a_i in enumerate(self.subject_atoms):
             if k % int( writefreq) == 0:
                 print(f"{k} / {len(self.subject_atoms)}")
-            """ 
+             
             for a_j in self.extended_atoms:
                 if not np.array_equal(a_i, a_j):
                     mag_r_ij = u.fast_vec_difmag(a_i[0], a_i[1], a_i[2], a_j[0], a_j[1], a_j[2])
@@ -562,27 +616,34 @@ class ModelPadfCalculator:
                         print(f'<pair_dist_calculation> {a_i} {a_j} are problematic')
                     self.n2_contacts.append(mag_r_ij)
                     self.interatomic_vectors.append(r_ij)
+            
             """
-            # alternative matrix version
+            # alternative matrix version  - THIS DOESN'T WORK AT THE MOMENT; NP.CONCATENATE LINE IS BUGGY
             diff = self.extended_atoms - a_i
             mags = np.sqrt(np.sum(diff*diff,1))
             igood = np.where( (mags>0.8) )
-            #print( diff[igood,:].shape, mags[igood].shape, self.extended_atoms[igood,3].shape, "shapes")
+            print( diff[igood,:].shape, mags[igood].shape, self.extended_atoms[igood,3].shape, "shapes")
             chunk_a_i = np.concatenate( (np.squeeze(diff[igood,:]), np.squeeze(mags[igood]).reshape((mags[igood].shape[0],1)), self.extended_atoms[igood,3].T*a_i[3]),axis=1)
             #iv_list += list(chunk_a_i)
-            iv_list.append(chunk_a_i)
+            print( chunk_a_i.shape, len(iv_list) )
+            #iv_list.append(chunk_a_i)
 
-            #if k==0:
-            #    ivectors = np.copy(chunk_a_i)
-            #else:
-            #    ivectors = np.concatenate( (ivectors, chunk_a_i), axis=0) 
-        
-        input("Just pausing for a moment:")
+            if k==0:
+                ivectors = np.copy(chunk_a_i)
+            else:
+                ivectors = np.concatenate( (ivectors, chunk_a_i), axis=0) 
+
+            
+
+        iv_list = ivectors
+
         iv_list = np.array(iv_list)
         self.interatomic_vectors = iv_list #np.concatenate( iv_list, axis=0) #ivectors       
         print(self.interatomic_vectors.shape)
-        input("Just pausing for a moment:")
-        exit() 
+        """
+
+        self.interatomic_vectors = np.array(self.interatomic_vectors)
+
         self.n2_contacts = self.interatomic_vectors[:,2] #ivectors[:,2]
 
         np.array(self.n2_contacts)
@@ -622,6 +683,7 @@ class ModelPadfCalculator:
         a = np.array(self.interatomic_vectors)
         b = a[a[:, 3] < self.rmax]
         c = b[b[:, 3] > self.rmin]
+        print( "debug ", self.rmin)
         print(f'<trim_interatomic_vectors_to_probe> ..after trimming to < self.rmax : {len(b)} vectors')
         print(f'<trim_interatomic_vectors_to_probe> ..after trimming to > self.rmin : {len(c)} vectors')
         print(f'<trim_interatomic_vectors_to_probe> ..after trimming : {len(c)} vectors')
@@ -664,7 +726,7 @@ class ModelPadfCalculator:
             k_start = time.time()
             self.calc_padf_frm_iav(k=k, r_ij=subject_iav)
             self.cycle_assessment(k=k, start_time=k_start)
-            if self.converged_flag:
+            if self.converged_flag and self.convergence_check_flag:
                 break
 
         # Save the rolling PADF arrays
@@ -686,7 +748,7 @@ class ModelPadfCalculator:
 
 
     #
-    #  The core of the matrix correlation and histogramming routine
+    #  The core of the matrix correlation routine
     #
 # calculate vec dot vec_prime for every pair of vectors
   
@@ -724,7 +786,7 @@ class ModelPadfCalculator:
  
           #print("min max div", np.min(div), np.max(div))
           # the angle between each pair of vectors
-          angles = div #np.arccos(div)
+          angles = np.arccos(div)
           #print("min max angles", np.min(angles), np.max(angles))
       
           # the final step would be to use array masking to histogram the calculation...
@@ -734,7 +796,7 @@ class ModelPadfCalculator:
                       np.outer(np.ones(nvec),norms2).flatten(),
                       angles.flatten() ])
           #print(nr, nth, np.min(rrth_coords), np.max(rrth_coords))
-          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax),(-1,1))) #(0,np.pi)))
+          padf, edges = np.histogramdd( rrth_coords.T, bins=(nr,nr,nth), range=((0,self.rmax),(0,self.rmax), (0,np.pi)))
           #print(edges[0], )
           return padf, edges
 
@@ -908,172 +970,6 @@ class ModelPadfCalculator:
           return outvol, edges
 
 
-    # used in histrogram calculation...
-    def calc_volume_correlation_theta_loop(self, ithread, rstart, rstop, sphvol, fsphvol, return_dict):
-            """
-            Used for threading the histogram calculation
-            """
-            coords = np.mgrid[:self.nr,:self.nthvol,:self.phivol]
-            print( coords.shape )
-            r = coords[0]
-            th = coords[1]*np.pi/self.nthvol
-            #costh = (2*coords[1]/self.nthvol)-1
-            #th = np.arccos( costh )
-            phi = coords[2]*2*np.pi/self.phivol
-        
-            return_dict[ithread] = np.zeros((self.nr, self.nr, self.nth))
-            for i in range(rstart,rstop):
-                for j in range(self.nthvol):
-                    shifted = np.roll(np.roll(sphvol,i,0),j,1)
-                    fshifted    = np.fft.fftn( shifted, axes=[2] )
-                    outevens = np.real(np.fft.ifftn( fshifted.conjugate()*fsphvol, axes=[2] ))
-                                 
-                    r_shifted  = np.roll(np.roll(r,i,0),j,1)
-                    th_shifted = np.roll(np.roll(th,i,0),j,1)
-                    #outevens *= np.sin(th)*np.sin(th_shifted) #sth hack!!!
-                    cos_angle = np.cos(th)*np.cos(th_shifted) + np.sin(th)*np.sin(th_shifted)*np.cos(phi)  #here phi stands in for phi1-phi2
-
-                    tmp, be = np.histogramdd( (r.flatten(), r_shifted.flatten(), cos_angle.flatten()), bins=(self.nr,self.nr,self.nth), range=((0,self.nr),(0,self.nr),(-1,1)), weights=outevens.flatten())
-                    return_dict[ithread] += tmp
-
-
-    # WHAT IS THIS ONE???
-    #
-    # A volume and histogram implementation of the model calculation   
-    #
-    #
-    def run_histogram_calculation(self):
-        """
-        A calculation that attempts to gain a speed improvement by using histograms
-        Not tested - don't use
-        """
-        global_start = time.time()
-        self.parameter_check()
-        self.write_all_params_to_file()
-        self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
-        
-
-        if self.subcellsize > 0.0: self.reduce_subject_atoms_to_subcell(self.limits)
-
-        self.dimension = self.get_dimension()  # Sets the target dimension (somewhat redundant until I get the fast r=r' mode set up)
-        """
-        Here we do the chunking for sending to threads
-        """
-        self.interatomic_vectors = self.pair_dist_calculation()  # Calculate all the interatomic vectors.
-        self.trim_interatomic_vectors_to_probe()  # Trim all the interatomic vectors to the r_probe limit
-        np.random.shuffle(self.interatomic_vectors)  # Shuffle list of vectors
-        
-        self.sphvol_evens = np.zeros((self.nr, self.nthvol, self.phivol))
-        self.sphvol_odds  = np.zeros((self.nr, self.nthvol, self.phivol))
-        chunksize = np.min([500,len(self.interatomic_vectors)])
-        nchunks = len(self.interatomic_vectors)//chunksize
-        print(f'<fast_model_padf.run_fast_histogram_calculation> Working...')
-        global_start = time.time()
-        for k in range(nchunks):
-            print(f'Creating 3D pair distributions in spherical coordinates; chunk index {k+1}/{nchunks}')
-            vectors = self.interatomic_vectors[k*chunksize:(k+1)*chunksize,:3]
-            for k2 in range(nchunks):
-                #print(f'Correlating chunk index {k+1}/{nchunks}  {k2}/{nchunks}')
-                vectors2 = self.interatomic_vectors[k2*chunksize:(k2+1)*chunksize,:3]
-                voltmp, edges = self.calc_sphvol_from_interatomic_vectors(vectors,nr=self.nr,nth=self.nthvol,nphi=self.phivol)
-                if (k*chunksize+k2)%2==0:
-                    self.sphvol_evens += voltmp
-                else:
-                    self.sphvol_odds += voltmp
-
-        print(
-            f'<fast_model_padf.run_histogram_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
-        # Set up the rolling PADF arrays
-        self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
-        self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
-        # Here we loop over interatomic vectors
-
-        fsphvol_evens = np.fft.fftn( self.sphvol_evens, axes=[2])
-        fsphvol_odds = np.fft.fftn( self.sphvol_odds, axes=[2])
-
-
-        coords = np.mgrid[:self.nr,:self.nthvol,:self.phivol]
-        print( coords.shape )
-        r = coords[0]
-        th = coords[1]*np.pi/self.nthvol
-        phi = coords[2]*2*np.pi/self.phivol
-
-        # volume correlation
-        manager = mp.Manager()            
-        return_dict = manager.dict()
-
-        t0 = time.perf_counter()
-        tcurrent = t0
-        hsum = np.zeros( (self.nr,self.nr,self.nth))
-        
-        if self.processor_num>1:
-            nchunk2 = self.nr//(self.processor_num//2)
-        else:
-            nchunk2 = self.nr
-        processes = [] 
-
-        
-        for ithread in range(self.processor_num):     
-            oddeven = ithread%2  
-            rstart, rstop = (ithread//2)*nchunk2, np.min([((ithread//2)+1)*nchunk2,self.nr])
-            print(f"Thread {ithread}; oddeven {oddeven}; rstart {rstart}; rstop {rstop}")
-            if oddeven==0:
-                p = mp.Process( target=self.calc_volume_correlation_theta_loop, args=(ithread,rstart,rstop,self.sphvol_evens, fsphvol_evens, return_dict))
-            else:
-                p = mp.Process( target=self.calc_volume_correlation_theta_loop, args=(ithread,rstart,rstop,self.sphvol_odds, fsphvol_odds, return_dict))
-            p.start()
-            processes.append(p)        
-            
-        for p in processes:
-            p.join()
-
-        for ithread in range(self.processor_num):   
-            oddeven = ithread%2
-            if oddeven==0:
-                self.rolling_Theta_evens += return_dict[ithread]
-            else:
-                self.rolling_Theta_odds  += return_dict[ithread] 
-            
-        
-        """
-        for i in range(self.nr):
-            print(i, time.perf_counter()-tcurrent, "s, ;", time.perf_counter()-t0, "s")
-            tcurrent = time.perf_counter()
-            for j in range(self.nth):
-                shifted = np.roll(np.roll(self.sphvol_evens,i,0),j,1)
-                fshifted    = np.fft.fftn( shifted, axes=[2] )
-                outevens = np.real(np.fft.ifftn( fshifted.conjugate()*fsphvol_evens, axes=[2] ))
-                
-                shifted = np.roll(np.roll(self.sphvol_odds,i,0),j,1)
-                fshifted    = np.fft.fftn( shifted, axes=[2] )
-                outodds = np.real(np.fft.ifftn( fshifted.conjugate()*fsphvol_odds, axes=[2] ))
-             
-                r_shifted  = np.roll(np.roll(r,i,0),j,1)
-                th_shifted = np.roll(np.roll(th,i,0),j,1)
-                cos_angle = np.cos(th)*np.cos(th_shifted) + np.sin(th)*np.sin(th_shifted)*np.cos(phi)  #here phi stands in for phi1-phi2
-
-                tmp_evens, be = np.histogramdd( (r.flatten(), r_shifted.flatten(), cos_angle.flatten()), bins=(self.nr,self.nr,self.nth), range=((0,self.nr),(0,self.nr),(-1,1)), weights=outevens.flatten())
-                tmp_odds, be = np.histogramdd( (r.flatten(), r_shifted.flatten(), cos_angle.flatten()), bins=(self.nr,self.nr,self.nth), range=((0,self.nr),(0,self.nr),(-1,1)), weights=outodds.flatten())
-                self.rolling_Theta_evens += tmp_evens
-                self.rolling_Theta_odds += tmp_odds
-        """
-
-        # Save the rolling PADF arrays
-        np.save(self.outpath + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
-        np.save(self.outpath + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
-        np.save(self.outpath + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
-
-        self.calculation_time = time.time() - global_start
-        print(
-            f"<fast_model_padf.run_fast_model_calculation> run_fast_model_calculation run time = {self.calculation_time} seconds")
-        print(
-            f"<fast_model_padf.run_fast_model_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
-        self.write_calculation_summary()
-        # Plot diagnostics
-        self.loop_similarity_array = np.array(self.loop_similarity_array)
-
-# if __name__ == '__main__':
-#     modelp = ModelPadfCalculator()
 
     #
     # Convert the blrr matrices to the PADF (l->theta)
@@ -1138,7 +1034,7 @@ class ModelPadfCalculator:
         """
         sphvol_oe = np.zeros((self.nr, self.nthvol, self.phivol,2)) 
         for i, a_i in enumerate(subject_atoms):
-                print(f"thread {j}, atom {i}/{len(subject_atoms)}", end='\r', flush=True)
+                print(f"thread {j}, atom {i+1}/{len(subject_atoms)}", end='\r', flush=True)
                 all_interatomic_vectors = np.zeros( (self.extended_atoms.shape[0], 4) )
                 all_interatomic_vectors[:,:3] = self.extended_atoms[:,:3] - np.outer(np.ones(self.extended_atoms.shape[0]),a_i[:3])
                 all_interatomic_vectors[:,3] = self.extended_atoms[:,3]*a_i[3]  # this is the product of the scattering factors                
@@ -1262,7 +1158,7 @@ class ModelPadfCalculator:
                 self.sphvol_odds += return_dict[j][:,:,:,1]
         else:
             sphvol_list = [0]
-            print( "len subject atoms", len(self.subject_atoms),"\n")
+            print( "Number of subject atoms", len(self.subject_atoms))
             self.thread_subject_atom_loop_sph(self.subject_atoms,0,sphvol_list)
             self.sphvol_evens = sphvol_list[0][:,:,:,0]
             self.sphvol_odds = sphvol_list[0][:,:,:,1]
@@ -1308,9 +1204,9 @@ class ModelPadfCalculator:
 
 
         # Save the rolling PADF arrays
-        np.save(self.outpath + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
-        np.save(self.outpath + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
-        np.save(self.outpath + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
+        #np.save(self.outpath + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
+        #np.save(self.outpath + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
+        #np.save(self.outpath + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
 
         self.calculation_time = time.time() - global_start
         if self.verbosity>0:
@@ -1319,6 +1215,121 @@ class ModelPadfCalculator:
             print(
                 f"<fast_model_padf.run_fast_model_calculation> Total contributing contacts (for normalization) = {self.total_contribs}")
         self.write_calculation_summary()
+
+
+
+
+    def calculate_model_padf(self, method='spharmonic', nthreads=1):
+        """
+        #    Runs a model padf calculation; triages for calcualtion type and use of multiprocessing
+        """        
+
+        #
+        # Run the calculation!
+        #
+        if self.subcellsize < 0.0:
+            print( "Calculation will NOT be split into subcells")
+
+            if method == 'serial':
+                self.run_fast_serial_calculation()
+            elif method=='matrix':
+                self.run_fast_matrix_calculation()
+            elif method == 'spharmonic':
+                self.run_spherical_harmonic_calculation()   
+            else:
+                print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
+        else:
+            self.tag += "_tiled"
+            self.processor_num = 1 #HANDLE THE THREADING IN THIS SCRIPT, ENURE FAST MODEL PADF DOES NOT USE THREADING
+            self.parameter_check()
+            self.write_all_params_to_file()
+            self.verbosity = 0
+
+            self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
+            self.box_dimensions_from_subject_atoms()
+            na, nb, nc = int(self.x_wid/self.subcellsize), int(self.x_wid/self.subcellsize), int(self.x_wid/self.subcellsize)
+            cellindices = []
+            for ia in range(na): 
+                for ib in range(nb): 
+                    for ic in range(nc): 
+                        cellindices.append( [ia,ib,ic])
+
+            nsubcells = len(cellindices)        
+            print( "Volume has been tiled into subcells. Number of subcells in x, y, z:",  na, nb, nc)
+
+            if nthreads > 1:
+                manager = mp.Manager()            
+                return_dict = manager.dict()
         
+                cells_per_proc = np.max( [nsubcells // nthreads,1])
+                remainder = nsubcells%nthreads
+                print( "cells per processor", cells_per_proc)
+
+                processes = []
+                for iproc in range(nthreads):
+                        if iproc < remainder:
+                            cells = cellindices[iproc*cells_per_proc:(iproc+1)*cells_per_proc+1]
+                        else:
+                            cells = cellindices[iproc*cells_per_proc:(iproc+1)*cells_per_proc]
+                        pr = mp.Process(target=thread_subcell_model_padf, \
+                                        args=(cells,iproc,copy.deepcopy(self),method,return_dict))
+                        pr.start()
+                        processes.append(pr)
+
+                for pr in processes:
+                    pr.join()
+
+ 
+                self.rolling_Theta_evens = return_dict[0][0]+ return_dict[0][1]
+                self.rolling_Theta_odds = 0.0*return_dict[0][1]
+                #self.sphvol_evens = return_dict[0][2]+ return_dict[0][3]
+                #self.sphvol_odds = 0.0*return_dict[0][3]
+
+                for iproc in range(1,nthreads):
+                    if iproc%2==0:
+                        self.rolling_Theta_evens += return_dict[iproc][0]+return_dict[iproc][1]
+                    else:
+                        self.rolling_Theta_odds += return_dict[iproc][0]+return_dict[iproc][1]
+                
+                     
+            else:
+               #single thread
+                for ia in range(na+1): 
+                    for ib in range(nb+1): 
+                        for ic in range(nc+1): 
+                            self.limits = np.array([self.x_min+ia*self.subcellsize,self.x_min+(ia+1)*self.subcellsize, \
+                                                        self.y_min+ib*self.subcellsize,self.y_min+(ib+1)*self.subcellsize,
+                                                        self.z_min+ic*self.subcellsize,self.z_min+(ic+1)*self.subcellsize])   
+
+                            if method == 'serial':
+                                self.run_fast_serial_calculation()
+                            elif method=='matrix':
+                                self.run_fast_matrix_calculation()
+                            elif method=='histogram':
+                                self.run_histogram_calculation()   
+                            elif method == 'spharmonic':
+                                self.run_spherical_harmonic_calculation()   
+                            else:
+                                print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
+
+                            if (ia==0)and(ib==0)and(ic==0):
+                                padfsum_evens = np.copy(self.rolling_Theta_evens)
+                                padfsum_odds = np.copy(self.rolling_Theta_odds)
+                            else:
+                                padfsum_evens += np.copy(self.rolling_Theta_evens)
+                                padfsum_odds += np.copy(self.rolling_Theta_odds)
+
+                            if ia==0 and ib==0 and ic==0: 
+                                self.write_subject_atoms_to_xyz( self.root+self.project+self.tag+'crop_tiled_circ.xyz')
+           
+                self.rolling_Theta_evens = padfsum_evens
+                self.rolling_Theta_odds  = padfsum_odds
+
+     
+        np.save(self.root + self.project + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
+        np.save(self.root + self.project + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
+        np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
+
+            
 # if __name__ == '__main__':
 #     modelp = ModelPadfCalculator()

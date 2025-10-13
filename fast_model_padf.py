@@ -228,7 +228,7 @@ class ModelPadfCalculator:
         cluster_subject = []
         if not self.com_cluster_flag:
             for i, ex_atom in enumerate(self.raw_extended_atoms):
-                print( i+1, "/", len(self.raw_extended_atoms)) 
+                #print( i+1, "/", len(self.raw_extended_atoms)) 
                 for as_atom in self.subject_atoms:
                     diff = u.fast_vec_difmag(ex_atom[0], ex_atom[1], ex_atom[2], as_atom[0], as_atom[1], as_atom[2])
                     if abs(diff) <= self.rmax:
