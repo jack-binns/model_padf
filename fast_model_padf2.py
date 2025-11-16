@@ -17,22 +17,46 @@ import copy
 
 
 def thread_subcell_model_padf(cells, j, modelp, method, return_dict): 
-    """
-    #    calculation of model padf from subcells of the volume, via multiprocessing
-    """
+        """
+        Compute the PADF for subcells of the simulation volume on a thread. 
+        Used in the multiprocessing calculation.
+
+        Parameters:
+
+        cells : numpy array of integers
+            The indices of the subcells to compute on this thread
+
+        j : int
+            index of the processor
+
+        modelp : model class (see fast_model_padf)
+            parameters and key information about the simulation
+
+        method : str
+            method of computing the PADF. Options: serial, matrix, spharmonic
+
+        return_dict : multiprocessing dictionary
+            stores the final calculated padf from each thread.    
+
+        """
+
     
+    # create arrays of zeros to store the output        
     padfsum_evens = np.zeros( (modelp.nr, modelp.nr, modelp.nth))
     padfsum_odds  = np.zeros( (modelp.nr, modelp.nr, modelp.nth)) 
     #sphvol_evens = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol))
     #sphvol_odds  = np.zeros( (modelp.nr, modelp.nthvol, modelp.phivol)) 
 
+    # loop over the subcell indices for this processor
     for icell, cell in enumerate(cells):
         print( f"Processor {j}; cell {icell+1} / {len(cells)}", end='\r', flush=True) 
+        # extract the cell indices and define the limits in modelp 
         ia, ib, ic = cell[0], cell[1], cell[2] 
         modelp.limits = np.array([ia*modelp.subcellsize+modelp.x_min,(ia+1)*modelp.subcellsize+modelp.x_min, \
                     ib*modelp.subcellsize+modelp.y_min,(ib+1)*modelp.subcellsize+modelp.y_min,\
                     ic*modelp.subcellsize+modelp.z_min,(ic+1)*modelp.subcellsize+modelp.z_min])   
 
+        # Compute the PADF from this subcell
         if method == 'serial':
             ModelPadfCalculator.run_fast_serial_calculation(modelp)
         elif method=='matrix':
@@ -42,6 +66,7 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
         else:
             print(" <method> parameter is not one of the valid options: serial, matrix, spharmonic")
 
+        # add the current padf to the cumulative sum 
         padfsum_evens += np.copy(modelp.rolling_Theta_evens)
         padfsum_odds += np.copy(modelp.rolling_Theta_odds)
         #sphvol_evens += np.copy(modelp.sphvol_evens)
@@ -50,6 +75,7 @@ def thread_subcell_model_padf(cells, j, modelp, method, return_dict):
         if j==0 and icell==0: 
             modelp.write_subject_atoms_to_xyz( modelp.root+modelp.project+modelp.tag+'crop_tiled_circ.xyz')
 
+    # store the output in the return dictionary
     return_dict[j] = [padfsum_evens, padfsum_odds]
 
 
@@ -537,10 +563,12 @@ class ModelPadfCalculator:
         if self.dimension == 2:
             r1_index = (np.abs(r_yard_stick - cor_vec[0])).argmin()
             th_index = (np.abs(th_yard_stick - cor_vec[-1])).argmin()
+            #print( "debug r1_inded", r1_index, array.shape)
             index_vec = [r1_index, th_index]
+            #print("debug shape array",  np.shape(array))
             array[index_vec[0], index_vec[1]] = array[index_vec[0], index_vec[1]] + fz
-            if self.r12_reflection:
-                array[index_vec[1], index_vec[0]] = array[index_vec[1], index_vec[0]] + fz
+            #if self.r12_reflection:
+            #    array[index_vec[1], index_vec[0]] = array[index_vec[1], index_vec[0]] + fz
         elif self.dimension == 3:
             r1_index = (np.abs(r_yard_stick - cor_vec[0])).argmin()
             r2_index = (np.abs(r_yard_stick - cor_vec[1])).argmin()
@@ -566,7 +594,14 @@ class ModelPadfCalculator:
         start = time.time()
         # print(f'<calc_padf_frm_iav>: Starting calculation on thread {k}...')
         fb_hit_count = 0
-        for r_xy in self.interatomic_vectors:
+        if self.dimension==2:
+            indices = self.interatomic_vectors[:,5]==r_ij[5]
+            ivects = self.interatomic_vectors[indices,:]
+        else:
+            ivects = self.interatomic_vectors
+
+
+        for r_xy in ivects: #self.interatomic_vectors:
             if np.array_equal(r_ij, r_xy):
                 continue
             theta = u.fast_vec_angle(r_ij[0], r_ij[1], r_ij[2], r_xy[0], r_xy[1], r_xy[2])
@@ -587,7 +622,7 @@ class ModelPadfCalculator:
         # np.save(self.root + self.project + self.tag + '_Theta_' + str(k), Theta)
 
     # not used in sphharmonic, but yes for other calcs
-    def pair_dist_calculation(self,writefreq=1000, outputpairs=False):
+    def pair_dist_calculation(self,writefreq=10, outputpairs=False):
         """ 
         Compute all interatomic vectors
 
@@ -610,6 +645,10 @@ class ModelPadfCalculator:
                     r_ij = u.fast_vec_subtraction(a_i[0], a_i[1], a_i[2], a_j[0], a_j[1], a_j[2])
                     r_ij.append(mag_r_ij)
                     r_ij.append(a_i[3] * a_j[3])
+                    #rbin = np.int32( self.nr*(mag_r_ij-self.rmin)/(self.rmax-self.rmin))
+                    rbin = np.int32( self.nr*(mag_r_ij)/(self.rmax))
+                    r_ij.append( rbin )
+
                     # print(f'r_ij : {r_ij}')
                     if mag_r_ij < 0.8:
                         print(f'<pair_dist_calculation> Warning: Unphysical interatomic distances detected:')
@@ -717,9 +756,15 @@ class ModelPadfCalculator:
         print(
             f'<fast_model_padf.run_fast_serial_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
         # Set up the rolling PADF arrays
-        self.rolling_Theta = np.zeros((self.nr, self.nr, self.nth))
-        self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
-        self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
+        if self.dimension==3:
+            self.rolling_Theta = np.zeros((self.nr, self.nr, self.nth))
+            self.rolling_Theta_odds = np.zeros((self.nr, self.nr, self.nth))
+            self.rolling_Theta_evens = np.zeros((self.nr, self.nr, self.nth))
+        elif self.dimension==2:
+            self.rolling_Theta = np.zeros((self.nr,  self.nth))
+            self.rolling_Theta_odds = np.zeros((self.nr,  self.nth))
+            self.rolling_Theta_evens = np.zeros(( self.nr, self.nth))
+            
         # Here we loop over interatomic vectors
         print(f'<fast_model_padf.run_fast_serial_calculation> Working...')
         for k, subject_iav in enumerate(self.interatomic_vectors):
@@ -939,6 +984,9 @@ class ModelPadfCalculator:
           inorm = np.where( norms > tol )
           sphv[inorm,1] =  np.arccos(vectors[inorm,2]/norms[inorm])
 
+          sphv[inorm,2] = np.arctan2( vectors[inorm,0], vectors[inorm,1] )  + np.pi
+
+          """
           ix = np.where( (np.abs(vectors[:,0])>tol)*(vectors[:,0]>0) )   #norm of x above thresh; and x positive
           sphv[ix,2] = np.pi/2   + np.arctan( vectors[ix,1]/vectors[ix,0])
 
@@ -951,7 +999,7 @@ class ModelPadfCalculator:
           
           ix = np.where( (np.abs(vectors[:,0])<tol)*(vectors[:,1]<0) )   #norm of x below thresh; and y negative
           sphv[ix,2] = 2.0*np.pi #np.pi/2
-
+          """
           #print("vectors")
           #for i in range(nvec): 
           #      if norms[i]>2: print(i, vectors[i], norms[i], sphv[i,:])
@@ -1221,15 +1269,18 @@ class ModelPadfCalculator:
 
     def calculate_model_padf(self, method='spharmonic', nthreads=1):
         """
-        #    Runs a model padf calculation; triages for calcualtion type and use of multiprocessing
+        #    Runs a model padf calculation; triages for calculation type and use of multiprocessing
         """        
 
         #
         # Run the calculation!
         #
+
+        # a negative subcellsize means the calculation will not be split into subcells
         if self.subcellsize < 0.0:
             print( "Calculation will NOT be split into subcells")
 
+            # Run the PADF calculation method set by the user
             if method == 'serial':
                 self.run_fast_serial_calculation()
             elif method=='matrix':
@@ -1239,14 +1290,18 @@ class ModelPadfCalculator:
             else:
                 print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
         else:
+            # Calculation with subcells
             self.tag += "_tiled"
             self.processor_num = 1 #HANDLE THE THREADING IN THIS SCRIPT, ENURE FAST MODEL PADF DOES NOT USE THREADING
             self.parameter_check()
             self.write_all_params_to_file()
             self.verbosity = 0
 
+            # read in the atom list from file
             self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
             self.box_dimensions_from_subject_atoms()
+
+            #set the number of subcells along each lattice direction
             na, nb, nc = int(self.x_wid/self.subcellsize), int(self.x_wid/self.subcellsize), int(self.x_wid/self.subcellsize)
             cellindices = []
             for ia in range(na): 
@@ -1258,13 +1313,17 @@ class ModelPadfCalculator:
             print( "Volume has been tiled into subcells. Number of subcells in x, y, z:",  na, nb, nc)
 
             if nthreads > 1:
+                #Multi-thread subcell calculation
                 manager = mp.Manager()            
                 return_dict = manager.dict()
-        
+       
+                # Number of subcells to process per processor
                 cells_per_proc = np.max( [nsubcells // nthreads,1])
                 remainder = nsubcells%nthreads
                 print( "cells per processor", cells_per_proc)
 
+
+                # starting calcution oi eacn threadd 
                 processes = []
                 for iproc in range(nthreads):
                         if iproc < remainder:
@@ -1331,5 +1390,3 @@ class ModelPadfCalculator:
         np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
 
             
-# if __name__ == '__main__':
-#     modelp = ModelPadfCalculator()
