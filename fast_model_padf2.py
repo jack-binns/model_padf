@@ -1127,15 +1127,20 @@ class ModelPadfCalculator:
         """
         The PADF calculation from spherical harmonics via the 3D pair distribution calculation
         """
+
+        # set up the multiprocessing
         manager = mp.Manager()            
         return_dict = manager.dict()
 
+        # read and check parameters
         global_start = time.time()
         self.parameter_check()
-        self.write_all_params_to_file() 
+        self.write_all_params_to_file()
+
+        # set up the atomic positions
         self.subject_atoms, self.extended_atoms = self.subject_target_setup()  # Sets up the atom positions of the subject set and supercell
-        ########self.subject_atoms = self.subject_atoms[:4000] #HACK!!!!
         
+        # reduce atoms to the subcell 
         if self.subcellsize > 0.0: 
             self.reduce_subject_atoms_to_subcell(self.limits)
 
@@ -1184,6 +1189,7 @@ class ModelPadfCalculator:
         #
         # The threaded version of the spherical harmonic calculation
         #
+        # This part calculates the 3D pair distribution in spherical coordinates from the list of pair vectors
         if self.processor_num>1:
             self.nthreads = self.processor_num
             natoms_per_thread = len(self.subject_atoms)//self.nthreads
@@ -1212,17 +1218,10 @@ class ModelPadfCalculator:
             self.sphvol_odds = sphvol_list[0][:,:,:,1]
                                              
 
-        
+        # save the 3D pair distribution to file
         np.save( self.outpath+f"{self.tag}_sphvol_evens.npy", self.sphvol_evens)
-        #plt.figure()
-        #plt.imshow( np.sum(self.sphvol_evens[11:14,:,:],0))
-        #plt.show()
 
-        #print(
-        #    f'<fast_model_padf.run_spherical_harmonic_calculation> Total interatomic vectors: {len(self.interatomic_vectors)}')
-    
-        #print( "debug spherical harmonic calc; nl nlmin", self.nl, self.nlmin)
-
+        # calculate the spherical harmonic coefficients
         coeffs_evens = np.zeros( (self.nr, 2, self.nl, self.nl))
         coeffs_odds = np.zeros( (self.nr, 2, self.nl, self.nl))
 
@@ -1232,6 +1231,8 @@ class ModelPadfCalculator:
             pysh_grid = pysh.shclasses.DHRealGrid(self.sphvol_odds[ir,:,:])
             coeffs_odds[ir,:,:,:] = pysh_grid.expand(csphase=1).coeffs[:,:self.nl, :self.nl]
 
+
+        # Construct the B_l(r,r') matrices from the spherical harmonic coefficients 
         Blrr_evens = np.zeros( (self.nl, self.nr, self.nr) )
         Blrr_odds  = np.zeros( (self.nl, self.nr, self.nr) )
         for ir in range(self.nr):
@@ -1245,16 +1246,10 @@ class ModelPadfCalculator:
         r = coords[0]
         th = coords[2]*2*np.pi/self.nth
 
-        # Set up the rolling PADF arrays
+        # Convert the B_l(r,r') matrices into the PADF
         self.rolling_Theta_odds =  self.Blrr_to_padf( Blrr_odds, (self.nr,self.nr,self.nth)) *np.abs(np.sin(th))
         self.rolling_Theta_evens = self.Blrr_to_padf( Blrr_evens, (self.nr, self.nr, self.nth)) *np.abs(np.sin(th))
-        # Here we loop over interatomic vectors
 
-
-        # Save the rolling PADF arrays
-        #np.save(self.outpath + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
-        #np.save(self.outpath + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
-        #np.save(self.outpath + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
 
         self.calculation_time = time.time() - global_start
         if self.verbosity>0:
@@ -1352,14 +1347,18 @@ class ModelPadfCalculator:
                 
                      
             else:
-               #single thread
+                #subcell calcualtion with a single thread
+                #sum over all the subcells
                 for ia in range(na+1): 
                     for ib in range(nb+1): 
-                        for ic in range(nc+1): 
+                        for ic in range(nc+1):
+
+                            #set the real-space limits in each dimension 
                             self.limits = np.array([self.x_min+ia*self.subcellsize,self.x_min+(ia+1)*self.subcellsize, \
                                                         self.y_min+ib*self.subcellsize,self.y_min+(ib+1)*self.subcellsize,
                                                         self.z_min+ic*self.subcellsize,self.z_min+(ic+1)*self.subcellsize])   
 
+                            # triage to the method being used
                             if method == 'serial':
                                 self.run_fast_serial_calculation()
                             elif method=='matrix':
@@ -1371,6 +1370,7 @@ class ModelPadfCalculator:
                             else:
                                 print(" <method> parameter is not one of the valid options: serial, matrix, histogram, spharmonic")
 
+                            # Initialise or update the padf
                             if (ia==0)and(ib==0)and(ic==0):
                                 padfsum_evens = np.copy(self.rolling_Theta_evens)
                                 padfsum_odds = np.copy(self.rolling_Theta_odds)
@@ -1378,13 +1378,14 @@ class ModelPadfCalculator:
                                 padfsum_evens += np.copy(self.rolling_Theta_evens)
                                 padfsum_odds += np.copy(self.rolling_Theta_odds)
 
+                            # output the first subcell's xyz coordinates for a check
                             if ia==0 and ib==0 and ic==0: 
                                 self.write_subject_atoms_to_xyz( self.root+self.project+self.tag+'crop_tiled_circ.xyz')
            
                 self.rolling_Theta_evens = padfsum_evens
                 self.rolling_Theta_odds  = padfsum_odds
 
-     
+        # save the PADF output to file 
         np.save(self.root + self.project + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
         np.save(self.root + self.project + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
         np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
