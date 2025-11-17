@@ -17,28 +17,28 @@ import copy
 
 
 def thread_subcell_model_padf(cells, j, modelp, method, return_dict): 
-        """
-        Compute the PADF for subcells of the simulation volume on a thread. 
-        Used in the multiprocessing calculation.
+    """
+    Compute the PADF for subcells of the simulation volume on a thread. 
+    Used in the multiprocessing calculation.
 
-        Parameters:
+    Parameters:
 
-        cells : numpy array of integers
-            The indices of the subcells to compute on this thread
+    cells : numpy array of integers
+        The indices of the subcells to compute on this thread
 
-        j : int
-            index of the processor
+    j : int
+        index of the processor
 
-        modelp : model class (see fast_model_padf)
-            parameters and key information about the simulation
+    modelp : model class (see fast_model_padf)
+        parameters and key information about the simulation
 
-        method : str
-            method of computing the PADF. Options: serial, matrix, spharmonic
+    method : str
+        method of computing the PADF. Options: serial, matrix, spharmonic
 
-        return_dict : multiprocessing dictionary
-            stores the final calculated padf from each thread.    
+    return_dict : multiprocessing dictionary
+        stores the final calculated padf from each thread.    
 
-        """
+    """
 
     
     # create arrays of zeros to store the output        
@@ -330,6 +330,16 @@ class ModelPadfCalculator:
             f.write(f'Total number of atoms in system {len(self.extended_atoms)}\n')
             f.write(f'Total number of contributing contacts {self.total_contribs}\n')
         np.savetxt(self.outpath + f'{self.tag}_similarity_log.txt', np.array(self.loop_similarity_array))
+
+    def write_processor_summary(self, procnum=0, ns=0, ne=0, nvec=0, t=0):
+        """
+        Writes out a summary of the calculation
+        """
+        with open(self.outpath + f'{self.tag}_proc{procnum}_calculation_log.txt', 'w') as f:
+            f.write(f'Calculation time: {t} s\n')
+            f.write(f'Total number of interatomic vectors {nvec)}\n')
+            f.write(f'Total number of (subject) atoms in system {ns)}\n')
+            f.write(f'Total number of (extended) atoms in system {ne}\n')
 
     def write_subject_atoms_to_xyz(self, fname, element="C"):
         """
@@ -1080,7 +1090,9 @@ class ModelPadfCalculator:
         return_dict : multiprocessing return dictionary
             return dictionary for multiprocessing  - stores output pair distribution
         """
-        sphvol_oe = np.zeros((self.nr, self.nthvol, self.phivol,2)) 
+        start = time.time()
+        sphvol_oe = np.zeros((self.nr, self.nthvol, self.phivol,2))
+        paircount = len(subject_atoms)*self.extended_atoms.shape[0]) 
         for i, a_i in enumerate(subject_atoms):
                 print(f"thread {j}, atom {i+1}/{len(subject_atoms)}", end='\r', flush=True)
                 all_interatomic_vectors = np.zeros( (self.extended_atoms.shape[0], 4) )
@@ -1115,8 +1127,9 @@ class ModelPadfCalculator:
         sphvol_oe[ith] = sphvol_oe[ith]/sthgrid[ith]
  
         return_dict[j] = sphvol_oe
-            
-
+        
+        stop = time.time()
+        self.write_processor_summary( j, len(subject_atoms), self.extended_atoms.shape[0], paircount, stop-start)
 
 
     #
@@ -1389,5 +1402,5 @@ class ModelPadfCalculator:
         np.save(self.root + self.project + self.tag + '_mPADF_total_sum', self.rolling_Theta_odds + self.rolling_Theta_evens)
         np.save(self.root + self.project + self.tag + '_mPADF_odds_sum', self.rolling_Theta_odds)
         np.save(self.root + self.project + self.tag + '_mPADF_evens_sum', self.rolling_Theta_evens)
-
-            
+    
+        self.write_calculation_summary()
